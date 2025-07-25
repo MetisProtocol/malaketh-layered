@@ -9,7 +9,8 @@ use malachitebft_app_channel::app::types::codec::Codec;
 use malachitebft_app_channel::app::types::core::{Round, Validity};
 use malachitebft_app_channel::app::types::sync::RawDecidedValue;
 use malachitebft_app_channel::app::types::{LocallyProposedValue, ProposedValue};
-use malachitebft_app_channel::{AppMsg, Channels, ConsensusMsg, NetworkMsg};
+use malachitebft_app_channel::{AppMsg, Channels, NetworkMsg};
+use malachitebft_app_channel::app::engine::host::Next;
 
 use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::json_structures::ExecutionBlock;
@@ -41,11 +42,9 @@ pub async fn run(
 
                 // We can simply respond by telling the engine to start consensus
                 // at the current height, which is initially 1
-                if reply
-                    .send(ConsensusMsg::StartHeight(
-                        state.current_height,
-                        state.get_validator_set().clone(),
-                    ))
+                if reply.send(
+                    (state.current_height, state.get_validator_set(state.current_height).clone())
+                )
                     .is_err()
                 {
                     error!("Failed to send ConsensusReady reply");
@@ -58,13 +57,18 @@ pub async fn run(
                 height,
                 round,
                 proposer,
+                role,
+                ..
             } => {
-                info!(%height, %round, %proposer, "🟢🟢 Started round");
+                info!(%height, %round, %proposer, ?role, "🟢🟢 Started round");
 
                 // We can use that opportunity to update our internal state
                 state.current_height = height;
                 state.current_round = round;
                 state.current_proposer = Some(proposer);
+
+                // todo support
+                // https://github.com/informalsystems/malachite/commit/6840ae388f7a9ea63b8de4b9b2087be7274bc78d
             }
 
             // At some point, we may end up being the proposer for that round, and the consensus engine
@@ -148,8 +152,8 @@ pub async fn run(
             //
             // In our case, our validator set stays constant between heights so we can
             // send back the validator set found in our genesis state.
-            AppMsg::GetValidatorSet { height: _, reply } => {
-                if reply.send(state.get_validator_set().clone()).is_err() {
+            AppMsg::GetValidatorSet { height, reply } => {
+                if reply.send(Some(state.get_validator_set(height).clone())).is_err() {
                     error!("🔴 Failed to send GetValidatorSet reply");
                 }
             }
@@ -256,9 +260,9 @@ pub async fn run(
 
                 // And then we instruct consensus to start the next height
                 if reply
-                    .send(ConsensusMsg::StartHeight(
+                    .send(Next::Start(
                         state.current_height,
-                        state.get_validator_set().clone(),
+                        state.get_validator_set(state.current_height).clone(),
                     ))
                     .is_err()
                 {
@@ -283,20 +287,22 @@ pub async fn run(
             } => {
                 info!(%height, %round, "🟢🟢 Processing synced value");
 
-                let value = decode_value(value_bytes);
-
-                // We send to consensus to see if it has been decided on
-                if reply
-                    .send(ProposedValue {
+                if let Some(value) = decode_value(value_bytes){
+                    let proposed_value = ProposedValue {
                         height,
                         round,
                         valid_round: Round::Nil,
                         proposer,
                         value,
                         validity: Validity::Valid,
-                    })
-                    .is_err()
-                {
+                    };
+                    state.store_undecided_proposal(proposed_value.clone()).await?;
+
+                    // We send to consensus to see if it has been decided on
+                    if reply.send(Some(proposed_value)).is_err() {
+                        error!("Failed to send ProcessSyncedValue reply");
+                    }
+                } else if reply.send(None).is_err() {
                     error!("Failed to send ProcessSyncedValue reply");
                 }
             }
@@ -344,20 +350,6 @@ pub async fn run(
                 if reply.send(Ok(())).is_err() {
                     error!("🔴 Failed to send VerifyVoteExtension reply");
                 }
-            }
-
-            AppMsg::PeerJoined { peer_id } => {
-                info!(%peer_id, "🟢🟢 Peer joined our local view of network");
-
-                // You might want to track connected peers in your state
-                state.peers.insert(peer_id);
-            }
-
-            AppMsg::PeerLeft { peer_id } => {
-                info!(%peer_id, "🔴 Peer left our local view of network");
-
-                // Remove the peer from tracking
-                state.peers.remove(&peer_id);
             }
         }
     }

@@ -1,10 +1,6 @@
 //! Internal state of the application. This is a simplified abstract to keep it simple.
 //! A regular application would have mempool implemented, a proper database and input methods like RPC.
-
-use std::collections::HashSet;
-
 use bytes::Bytes;
-use color_eyre::eyre;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use sha3::Digest;
@@ -23,7 +19,7 @@ use malachitebft_eth_types::{
     ProposalPart, TestContext, ValidatorSet, Value,
 };
 
-use crate::store::{DecidedValue, Store};
+use crate::store::{DecidedValue, Store, StoreError};
 use crate::streaming::{PartStreamsMap, ProposalParts};
 
 /// Size of randomly generated blocks in bytes
@@ -50,7 +46,7 @@ pub struct State {
     pub current_height: Height,
     pub current_round: Round,
     pub current_proposer: Option<Address>,
-    pub peers: HashSet<PeerId>,
+    // pub peers: HashSet<PeerId>,
 
     pub latest_block: Option<ExecutionBlock>,
 
@@ -107,7 +103,7 @@ impl State {
             stream_nonce: 0,
             streams_map: PartStreamsMap::new(),
             rng: StdRng::seed_from_u64(seed_from_address(&address)),
-            peers: HashSet::new(),
+            // peers: HashSet::new(),
 
             latest_block: None,
 
@@ -189,6 +185,10 @@ impl State {
             .store_undecided_block_data(self.current_height, self.current_round, data)
             .await
             .map_err(|e| eyre::Report::new(e))
+    }
+
+    pub async fn store_undecided_proposal(&self, value: ProposedValue<TestContext>) -> Result<(), StoreError> {
+        self.store.store_undecided_proposal(value).await
     }
 
     /// Retrieves a decided block at the given height
@@ -410,8 +410,24 @@ impl State {
     }
 
     /// Returns the set of validators.
-    pub fn get_validator_set(&self) -> &ValidatorSet {
-        &self.genesis.validator_set
+    pub fn get_validator_set(&self, height: Height) -> ValidatorSet {
+        let num_validators = self.genesis.validator_set.len();
+        let selection_size = num_validators.div_ceil(2);
+
+        if num_validators <= selection_size {
+            return self.genesis.validator_set.clone();
+        }
+
+        ValidatorSet::new(
+            self.genesis
+                .validator_set
+                .iter()
+                .cycle()
+                .skip(height.as_u64() as usize % num_validators)
+                .take(selection_size)
+                .cloned()
+                .collect::<Vec<_>>(),
+        )
     }
 
     /// Verifies the signature of the proposal.
@@ -444,7 +460,7 @@ impl State {
 
         // Retrieve the public key of the proposer
         let public_key = self
-            .get_validator_set()
+            .get_validator_set(self.current_height)
             .get_by_address(&parts.proposer)
             .map(|v| v.public_key);
 
@@ -492,7 +508,7 @@ fn assemble_value_from_parts(parts: ProposalParts) -> (ProposedValue<TestContext
     (proposed_value, data)
 }
 
-/// Decodes a Value from its byte representation using ProtobufCodec
-pub fn decode_value(bytes: Bytes) -> Value {
-    ProtobufCodec.decode(bytes).unwrap()
+/// Decodes a Value from its byte representation
+pub fn decode_value(bytes: Bytes) -> Option<Value> {
+    ProtobufCodec.decode(bytes).ok()
 }
