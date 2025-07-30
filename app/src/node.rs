@@ -182,7 +182,7 @@ impl Node for App {
                     Url::parse(url)?
                 }
             };
-            let jwt_path = PathBuf::from_str("./assets/jwtsecret")?; // Should be the same secret used by the execution client.
+            let jwt_path = PathBuf::from_str(self.app_config.wt_path.as_str())?; // Should be the same secret used by the execution client.
             let eth_url: Url = {
                 let url = self.app_config.eth_url.as_str();
                 if url.is_empty(){
