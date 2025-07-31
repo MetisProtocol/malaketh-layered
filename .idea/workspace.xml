@@ -24,8 +24,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="238474b0-d776-4f47-8d42-e6aab323405c" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -54,9 +53,9 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
     "RunOnceActivity.rust.reset.selective.auto.import": "true",
-    "git-widget-placeholder": "main",
+    "git-widget-placeholder": "test-log",
     "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/Users/4paradigm/work/metis/malaketh-layered",
+    "last_opened_file_path": "/Users/4paradigm/work/chengzhinei/malaketh-layered",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -139,6 +138,7 @@
       <workItem from="1753872202328" duration="570000" />
       <workItem from="1753926859008" duration="2737000" />
       <workItem from="1753931191015" duration="3512000" />
+      <workItem from="1753948411839" duration="264000" />
     </task>
     <servers />
   </component>
