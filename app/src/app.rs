@@ -23,7 +23,10 @@ pub async fn run(
     channels: &mut Channels<TestContext>,
     engine: Engine,
 ) -> eyre::Result<()> {
+    info!("metis-test:app::run!!!");
     while let Some(msg) = channels.consensus.recv().await {
+        info!("metis-test:consensus-chan recv!!! msg:{:?}", msg);
+
         match msg {
             // The first message to handle is the `ConsensusReady` message, signaling to the app
             // that Malachite is ready to start consensus

@@ -70,50 +70,40 @@ url                = "2"
 
 [workspace.dependencies.malachitebft-app]
 package = "informalsystems-malachitebft-app"
-rev = "0968a34ba747130467569b1d10b2b1ef18f4b69b"
-git = "https://github.com/informalsystems/malachite.git"
+path = "../malachite/code/crates/app"
 
 [workspace.dependencies.malachitebft-app-channel]
 package = "informalsystems-malachitebft-app-channel"
-rev = "0968a34ba747130467569b1d10b2b1ef18f4b69b"
-git = "https://github.com/informalsystems/malachite.git"
+path = "../malachite/code/crates/app-channel"
 
 [workspace.dependencies.malachitebft-core-types]
 package = "informalsystems-malachitebft-core-types"
-rev = "0968a34ba747130467569b1d10b2b1ef18f4b69b"
-git = "https://github.com/informalsystems/malachite.git"
+path = "../malachite/code/crates/core-types"
 
 [workspace.dependencies.malachitebft-core-consensus]
 package = "informalsystems-malachitebft-core-consensus"
-rev = "0968a34ba747130467569b1d10b2b1ef18f4b69b"
-git = "https://github.com/informalsystems/malachite.git"
+path = "../malachite/code/crates/core-consensus"
 
 [workspace.dependencies.malachitebft-codec]
 package = "informalsystems-malachitebft-codec"
-rev = "0968a34ba747130467569b1d10b2b1ef18f4b69b"
-git = "https://github.com/informalsystems/malachite.git"
+path = "../malachite/code/crates/codec"
 
 [workspace.dependencies.malachitebft-config]
 package = "informalsystems-malachitebft-config"
-rev = "0968a34ba747130467569b1d10b2b1ef18f4b69b"
-git = "https://github.com/informalsystems/malachite.git"
+path = "../malachite/code/crates/config"
 
 [workspace.dependencies.malachitebft-metrics]
 package = "informalsystems-malachitebft-metrics"
-rev = "0968a34ba747130467569b1d10b2b1ef18f4b69b"
-git = "https://github.com/informalsystems/malachite.git"
+path = "../malachite/code/crates/metrics"
 
 [workspace.dependencies.malachitebft-proto]
 package = "informalsystems-malachitebft-proto"
-rev = "0968a34ba747130467569b1d10b2b1ef18f4b69b"
-git = "https://github.com/informalsystems/malachite.git"
+path = "../malachite/code/crates/proto"
 
 [workspace.dependencies.malachitebft-signing-ed25519]
 package = "informalsystems-malachitebft-signing-ed25519"
-rev = "0968a34ba747130467569b1d10b2b1ef18f4b69b"
-git = "https://github.com/informalsystems/malachite.git"
+path = "../malachite/code/crates/signing-ed25519"
 
 [workspace.dependencies.malachitebft-sync]
 package = "informalsystems-malachitebft-sync"
-rev = "0968a34ba747130467569b1d10b2b1ef18f4b69b"
-git = "https://github.com/informalsystems/malachite.git"
+path = "../malachite/code/crates/sync"
