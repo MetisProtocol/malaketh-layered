@@ -27,7 +27,11 @@ use malachitebft_eth_types::{
     Address, Ed25519Provider, Genesis, Height, PrivateKey, PublicKey, TestContext, Validator,
     ValidatorSet,
 };
-use tokio::task::JoinHandle;
+use tokio::{
+    task::JoinHandle,
+    signal::unix::{signal, SignalKind},
+    sync::mpsc,
+};
 use url::Url;
 use crate::app_config::AppConfig;
 use crate::metrics::DbMetrics;
@@ -203,8 +207,23 @@ impl Node for App {
             )
         };
 
+        // SIGTERM
+        let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
+        let _ = tokio::spawn(async move {
+            let mut sigterm = signal(SignalKind::terminate())
+                .map_err(|e| eyre::eyre!("Failed to register SIGTERM handler: {}", e))?;
+
+            // waiting for SIGTERM
+            sigterm.recv().await;
+            tracing::info!("Received SIGTERM, initiating shutdown");
+
+            // send shutdown
+            let _ = shutdown_tx.send(());
+            Ok::<_, eyre::Error>(())
+        });
+
         let app_handle = tokio::spawn(async move {
-            if let Err(e) = crate::app::run(&mut state, &mut channels, engine).await {
+            if let Err(e) = crate::app::run(&mut state, &mut channels, engine, shutdown_rx).await {
                 tracing::error!(%e, "Application error");
             }
         });
