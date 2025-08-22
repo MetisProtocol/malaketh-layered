@@ -3,10 +3,10 @@ use prost::Message;
 
 use malachitebft_app::streaming::{StreamContent, StreamId, StreamMessage};
 use malachitebft_codec::Codec;
-use malachitebft_core_consensus::{ProposedValue, SignedConsensusMsg};
+use malachitebft_core_consensus::{LivenessMsg, ProposedValue, SignedConsensusMsg};
 use malachitebft_core_types::{
-    AggregatedSignature, CommitCertificate, CommitSignature, Round, SignedExtension,
-    SignedProposal, SignedVote, Validity, VoteSet,
+    CommitCertificate, CommitSignature, Round, SignedExtension,
+    SignedProposal, SignedVote, Validity,
 };
 use malachitebft_proto::{Error as ProtoError, Protobuf};
 use malachitebft_signing_ed25519::Signature;
@@ -113,6 +113,18 @@ impl Codec<SignedConsensusMsg<TestContext>> for ProtobufCodec {
     }
 }
 
+impl Codec<LivenessMsg<TestContext>> for ProtobufCodec {
+    type Error = ProtoError;
+
+    fn decode(&self, _bytes: Bytes) -> Result<LivenessMsg<TestContext>, Self::Error> {
+        todo!()
+    }
+
+    fn encode(&self, _msg: &LivenessMsg<TestContext>) -> Result<Bytes, Self::Error> {
+        todo!()
+    }
+}
+
 impl Codec<StreamMessage<ProposalPart>> for ProtobufCodec {
     type Error = ProtoError;
 
@@ -203,7 +215,7 @@ impl Codec<sync::Status<TestContext>> for ProtobufCodec {
 
         Ok(sync::Status {
             peer_id: PeerId::from_bytes(proto_peer_id.id.as_ref()).unwrap(),
-            height: Height::new(proto.height),
+            tip_height: Height::new(proto.height),
             history_min_height: Height::new(proto.earliest_height),
         })
     }
@@ -213,7 +225,7 @@ impl Codec<sync::Status<TestContext>> for ProtobufCodec {
             peer_id: Some(proto::PeerId {
                 id: Bytes::from(msg.peer_id.to_bytes()),
             }),
-            height: msg.height.as_u64(),
+            height: msg.tip_height.as_u64(),
             earliest_height: msg.history_min_height.as_u64(),
         };
 
@@ -234,9 +246,7 @@ impl Codec<sync::Request<TestContext>> for ProtobufCodec {
             proto::sync_request::Request::ValueRequest(req) => Ok(sync::Request::ValueRequest(
                 sync::ValueRequest::new(Height::new(req.height)),
             )),
-            proto::sync_request::Request::VoteSetRequest(req) => Ok(sync::Request::VoteSetRequest(
-                sync::VoteSetRequest::new(Height::new(req.height), Round::new(req.round)),
-            )),
+            _ => todo!(),
         }
     }
 
@@ -249,14 +259,14 @@ impl Codec<sync::Request<TestContext>> for ProtobufCodec {
                     },
                 )),
             },
-            sync::Request::VoteSetRequest(req) => proto::SyncRequest {
-                request: Some(proto::sync_request::Request::VoteSetRequest(
-                    proto::VoteSetRequest {
-                        height: req.height.as_u64(),
-                        round: req.round.as_u32().unwrap(),
-                    },
-                )),
-            },
+            // sync::Request::VoteSetRequest(req) => proto::SyncRequest {
+            //     request: Some(proto::sync_request::Request::VoteSetRequest(
+            //         proto::VoteSetRequest {
+            //             height: req.height.as_u64(),
+            //             round: req.round.as_u32().unwrap(),
+            //         },
+            //     )),
+            // },
         };
 
         Ok(Bytes::from(proto.encode_to_vec()))
@@ -289,19 +299,7 @@ pub fn decode_sync_response(
                 value_response.value.map(decode_synced_value).transpose()?,
             ))
         }
-        proto::sync_response::Response::VoteSetResponse(vote_set_response) => {
-            let height = Height::new(vote_set_response.height);
-            let round = Round::new(vote_set_response.round);
-            let vote_set = vote_set_response
-                .vote_set
-                .ok_or_else(|| ProtoError::missing_field::<proto::VoteSet>("vote_set"))?;
-
-            sync::Response::VoteSetResponse(sync::VoteSetResponse::new(
-                height,
-                round,
-                decode_vote_set(vote_set)?,
-            ))
-        }
+        _ => todo!()
     };
     Ok(response)
 }
@@ -321,19 +319,7 @@ pub fn encode_sync_response(
                         .transpose()?,
                 },
             )),
-        },
-        sync::Response::VoteSetResponse(vote_set_response) => proto::SyncResponse {
-            response: Some(proto::sync_response::Response::VoteSetResponse(
-                proto::VoteSetResponse {
-                    height: vote_set_response.height.as_u64(),
-                    round: vote_set_response
-                        .round
-                        .as_u32()
-                        .expect("round should not be nil"),
-                    vote_set: Some(encode_vote_set(&vote_set_response.vote_set)?),
-                },
-            )),
-        },
+        }
     };
 
     Ok(proto)
@@ -380,7 +366,7 @@ pub fn decode_certificate(
         height: Height::new(certificate.height),
         round: Round::new(certificate.round),
         value_id,
-        aggregated_signature,
+        commit_signatures: aggregated_signature,
     };
 
     Ok(certificate)
@@ -394,14 +380,14 @@ pub fn encode_certificate(
         round: certificate.round.as_u32().expect("round should not be nil"),
         value_id: Some(certificate.value_id.to_proto()?),
         aggregated_signature: Some(encode_aggregate_signature(
-            &certificate.aggregated_signature,
+            &certificate.commit_signatures,
         )?),
     })
 }
 
 pub fn decode_aggregated_signature(
     signature: proto::AggregatedSignature,
-) -> Result<AggregatedSignature<TestContext>, ProtoError> {
+) -> Result<Vec<CommitSignature<TestContext>>, ProtoError> {
     let signatures = signature
         .signatures
         .into_iter()
@@ -422,14 +408,13 @@ pub fn decode_aggregated_signature(
         })
         .collect::<Result<Vec<_>, ProtoError>>()?;
 
-    Ok(AggregatedSignature { signatures })
+    Ok(signatures)
 }
 
 pub fn encode_aggregate_signature(
-    aggregated_signature: &AggregatedSignature<TestContext>,
+    aggregated_signature: &Vec<CommitSignature<TestContext>>,
 ) -> Result<proto::AggregatedSignature, ProtoError> {
     let signatures = aggregated_signature
-        .signatures
         .iter()
         .map(|s| {
             Ok(proto::CommitSignature {
@@ -441,6 +426,8 @@ pub fn encode_aggregate_signature(
 
     Ok(proto::AggregatedSignature { signatures })
 }
+
+
 
 pub fn decode_extension(ext: proto::Extension) -> Result<SignedExtension<TestContext>, ProtoError> {
     let extension = ext.data;
@@ -461,6 +448,7 @@ pub fn encode_extension(
     })
 }
 
+/*
 pub fn encode_vote_set(vote_set: &VoteSet<TestContext>) -> Result<proto::VoteSet, ProtoError> {
     Ok(proto::VoteSet {
         signed_votes: vote_set
@@ -501,6 +489,7 @@ pub fn decode_vote(msg: proto::SignedMessage) -> Option<SignedVote<TestContext>>
     let vote = Vote::from_proto(vote).ok()?;
     Some(SignedVote::new(vote, signature))
 }
+*/
 
 pub fn encode_signature(signature: &Signature) -> proto::Signature {
     proto::Signature {

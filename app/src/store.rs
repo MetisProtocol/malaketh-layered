@@ -424,6 +424,8 @@ pub struct Store {
 }
 
 impl Store {
+    /// Opens a new store at the given path with the provided metrics.
+    /// Called by the application when initializing the store.
     pub fn open(path: impl AsRef<Path>, metrics: DbMetrics) -> Result<Self, StoreError> {
         let db = Db::new(path, metrics)?;
         db.create_tables()?;
@@ -431,6 +433,8 @@ impl Store {
         Ok(Self { db: Arc::new(db) })
     }
 
+    /// Returns the minimum height of decided values in the store.
+    /// Called by the application to determine the earliest available height.
     pub async fn min_decided_value_height(&self) -> Option<Height> {
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || db.min_decided_value_height())
@@ -439,6 +443,8 @@ impl Store {
             .flatten()
     }
 
+    /// Returns the maximum height of decided values in the store.
+    /// Called by the application to determine the latest available height.
     // pub async fn max_decided_value_height(&self) -> Option<Height> {
     //     let db = Arc::clone(&self.db);
     //     tokio::task::spawn_blocking(move || db.max_decided_value_height())
@@ -447,6 +453,8 @@ impl Store {
     //         .flatten()
     // }
 
+    /// Retrieves a decided value for the given height.
+    /// Called by the application when a syncing peer is asking for a decided value.
     pub async fn get_decided_value(
         &self,
         height: Height,
@@ -456,6 +464,8 @@ impl Store {
         tokio::task::spawn_blocking(move || db.get_decided_value(height)).await?
     }
 
+    /// Stores a decided value with its certificate.
+    /// Called by the application when it `commit`s a value decided by consensus.
     pub async fn store_decided_value(
         &self,
         certificate: &CommitCertificate<TestContext>,
@@ -470,6 +480,8 @@ impl Store {
         tokio::task::spawn_blocking(move || db.insert_decided_value(decided_value)).await?
     }
 
+    /// Stores an undecided proposal.
+    /// Called by the application when receiving new proposals from peers.
     pub async fn store_undecided_proposal(
         &self,
         value: ProposedValue<TestContext>,
@@ -478,6 +490,8 @@ impl Store {
         tokio::task::spawn_blocking(move || db.insert_undecided_proposal(value)).await?
     }
 
+    /// Retrieves a specific undecided proposal by height, round, and value ID.
+    /// Called by the application when consensus asks for a specific proposal to restream.
     pub async fn get_undecided_proposal(
         &self,
         height: Height,
@@ -487,10 +501,23 @@ impl Store {
         tokio::task::spawn_blocking(move || db.get_undecided_proposal(height, round)).await?
     }
 
+    /// Prunes the store by removing all undecided proposals and decided values up to the retain height.
+    /// Called by the application to clean up old data and free up space. This is done when a new value is committed.
     pub async fn prune(&self, retain_height: Height) -> Result<Vec<Height>, StoreError> {
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || db.prune(retain_height)).await?
     }
+
+    /// Retrieves an undecided proposal by its value ID.
+    /// Called by the application when looking up a proposal by value ID.
+    // pub async fn get_undecided_proposal_by_value_id(
+    //     &self,
+    //     value_id: ValueId,
+    // ) -> Result<Option<ProposedValue<TestContext>>, StoreError> {
+    //     let db = Arc::clone(&self.db);
+    //     tokio::task::spawn_blocking(move || db.get_undecided_proposal_by_value_id(value_id)).await?
+    // }
+
     pub async fn get_block_data(
         &self,
         height: Height,

@@ -16,12 +16,14 @@ malachitebft-eth-cli.workspace = true
 malachitebft-eth-engine.workspace = true
 malachitebft-app-channel.workspace = true
 malachitebft-proto.workspace = true
+malachitebft-config.workspace = true
 
 alloy-consensus = { workspace = true }
 alloy-rpc-types-eth = { workspace = true }
 alloy-rpc-types-engine = { workspace = true }
 ethereum_ssz = "0.8"
 
+eyre.workspace = true
 hex.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
@@ -38,4 +40,5 @@ tokio.workspace = true
 tracing.workspace = true
 url.workspace = true
 config.workspace = true
+itertools.workspace = true
 
