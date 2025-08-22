@@ -9,7 +9,7 @@ use malachitebft_app_channel::app::types::codec::Codec;
 use malachitebft_app_channel::app::types::core::{Round, Validity};
 use malachitebft_app_channel::app::types::sync::RawDecidedValue;
 use malachitebft_app_channel::app::types::{LocallyProposedValue, ProposedValue};
-use malachitebft_app_channel::{AppMsg, Channels, ConsensusMsg, NetworkMsg};
+use malachitebft_app_channel::{AppMsg, Channels, NetworkMsg};
 use malachitebft_app_channel::app::engine::host::Next;
 use tokio::sync::mpsc::Receiver;
 use malachitebft_eth_engine::engine::Engine;
@@ -48,12 +48,9 @@ pub async fn run(
 
                         // We can simply respond by telling the engine to start consensus
                         // at the current height, which is initially 1
-                        if reply
-                            .send(ConsensusMsg::StartHeight(
-                                state.current_height,
-                                state.get_validator_set().clone(),
-                            ))
-                            .is_err()
+                        if reply.send(
+                            (state.current_height, state.get_validator_set(state.current_height).clone())
+                        ).is_err()
                         {
                             error!("Failed to send ConsensusReady reply");
                         }
@@ -358,20 +355,6 @@ pub async fn run(
                         if reply.send(Ok(())).is_err() {
                             error!("🔴 Failed to send VerifyVoteExtension reply");
                         }
-                    }
-
-                    AppMsg::PeerJoined { peer_id } => {
-                        info!(%peer_id, "🟢🟢 Peer joined our local view of network");
-
-                        // You might want to track connected peers in your state
-                        state.peers.insert(peer_id);
-                    }
-
-                    AppMsg::PeerLeft { peer_id } => {
-                        info!(%peer_id, "🔴 Peer left our local view of network");
-
-                        // Remove the peer from tracking
-                        state.peers.remove(&peer_id);
                     }
                 }
             }
