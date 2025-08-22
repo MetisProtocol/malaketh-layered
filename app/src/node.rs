@@ -16,8 +16,10 @@ use malachitebft_eth_engine::ethereum_rpc::EthereumRPC;
 use rand::{CryptoRng, RngCore};
 
 use malachitebft_app_channel::app::metrics::SharedRegistry;
+use malachitebft_app_channel::app::types::config::Config;
 use malachitebft_app_channel::app::types::core::VotingPower;
 use malachitebft_app_channel::app::types::Keypair;
+use malachitebft_app_channel::app::{EngineHandle, Node};
 
 // Use the same types used for integration tests.
 // A real application would use its own types and context instead.
@@ -27,7 +29,11 @@ use malachitebft_eth_types::{
     Address, Ed25519Provider, Genesis, Height, PrivateKey, PublicKey, TestContext, Validator,
     ValidatorSet,
 };
-use tokio::task::JoinHandle;
+use tokio::{
+    task::JoinHandle,
+    signal::unix::{signal, SignalKind},
+    sync::mpsc,
+};
 use tracing::Instrument;
 use url::Url;
 use crate::app_config::{load_config, Config};
@@ -72,7 +78,6 @@ impl Node for App {
     type PrivateKeyFile = PrivateKey;
     type SigningProvider = Ed25519Provider;
     type NodeHandle = Handle;
-    type Config = Config;
 
     fn get_home_dir(&self) -> PathBuf {
         self.home_dir.to_owned()
@@ -112,6 +117,16 @@ impl Node for App {
         serde_json::from_str(&genesis).map_err(|e| e.into())
     }
 
+    fn make_genesis(&self, validators: Vec<(PublicKey, VotingPower)>) -> Self::Genesis {
+        let validators = validators
+            .into_iter()
+            .map(|(pk, vp)| Validator::new(pk, vp));
+
+        let validator_set = ValidatorSet::new(validators);
+
+        Genesis { validator_set }
+    }
+
     async fn start(&self) -> eyre::Result<Handle> {
         let config = self.load_config()?;
 
@@ -127,6 +142,8 @@ impl Node for App {
 
         let genesis = self.load_genesis()?;
         let initial_validator_set = genesis.validator_set.clone();
+
+        let codec = ProtobufCodec;
 
         let (mut channels, engine_handle) = malachitebft_app_channel::start_engine(
             ctx.clone(),
@@ -170,7 +187,7 @@ impl Node for App {
                     Url::parse(url)?
                 }
             };
-            let jwt_path = PathBuf::from_str("./assets/jwtsecret")?; // Should be the same secret used by the execution client.
+            let jwt_path = PathBuf::from_str(self.app_config.wt_path.as_str())?; // Should be the same secret used by the execution client.
             let eth_url: Url = {
                 let url = config.engine.eth_url.as_str();
                 if url.is_empty(){
@@ -192,8 +209,23 @@ impl Node for App {
         };
 
         let span = tracing::error_span!("node", moniker = %config.moniker);
+        // SIGTERM
+        let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
+        let _ = tokio::spawn(async move {
+            let mut sigterm = signal(SignalKind::terminate())
+                .map_err(|e| eyre::eyre!("Failed to register SIGTERM handler: {}", e))?;
+
+            // waiting for SIGTERM
+            sigterm.recv().await;
+            tracing::info!("Received SIGTERM, initiating shutdown");
+
+            // send shutdown
+            let _ = shutdown_tx.send(());
+            Ok::<_, eyre::Error>(())
+        });
+
         let app_handle = tokio::spawn(async move {
-            if let Err(e) = crate::app::run(&mut state, &mut channels, engine).await {
+            if let Err(e) = crate::app::run(&mut state, &mut channels, engine, shutdown_rx).await {
                 tracing::error!(%e, "Application error");
             }
         }
