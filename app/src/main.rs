@@ -52,6 +52,7 @@ fn start(args: &Args, cmd: &StartCmd) -> Result<()> {
         .get_config_file_path()
         .map_err(|error| eyre!("Failed to get configuration file path: {error}"))?;
 
+    print!("fsc-test: config_file:{:?}", config_file);
     let config = app_config::load_config(&config_file, None)
         .map_err(|error| eyre!("Failed to load configuration file: {error}"))?;
 
