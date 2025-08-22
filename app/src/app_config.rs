@@ -19,7 +19,7 @@ impl Default for EngineConfig {
         EngineConfig {
             engine_url: "http://localhost:8551".to_string(),
             eth_url: "http://localhost:8545".to_string(),
-            wt_path: "./configs/assets/jwtsecret".to_string(),
+            wt_path: "./assets/jwtsecret".to_string(),
         }
     }
 }
