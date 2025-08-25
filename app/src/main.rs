@@ -8,8 +8,9 @@ use malachitebft_eth_cli::args::{Args, Commands};
 use malachitebft_eth_cli::cmd::init::InitCmd;
 use malachitebft_eth_cli::cmd::start::StartCmd;
 use malachitebft_eth_cli::cmd::testnet::TestnetCmd;
-use malachitebft_eth_cli::{runtime};
+use malachitebft_eth_cli::{runtime, logging};
 use malachitebft_eth_types::Height;
+use malachitebft_config::*;
 
 mod app;
 mod metrics;
@@ -35,6 +36,19 @@ fn main() -> Result<()> {
     // Load command-line arguments and possible configuration file.
     let args = Args::new();
 
+    // Override logging configuration (if exists) with optional command-line parameters.
+    let mut logging = LoggingConfig::default();
+    if let Some(log_level) = args.log_level {
+       logging.log_level = log_level;
+    }
+    if let Some(log_format) = args.log_format {
+        logging.log_format = log_format;
+    }
+
+    // This is a drop guard responsible for flushing any remaining logs when the program terminates.
+    // It must be assigned to a binding that is not _, as _ will result in the guard being dropped immediately.
+    let _guard = logging::init(logging.log_level, logging.log_format);
+
     trace!("Command-line parameters: {args:?}");
 
     // Parse the input command.
@@ -52,7 +66,6 @@ fn start(args: &Args, cmd: &StartCmd) -> Result<()> {
         .get_config_file_path()
         .map_err(|error| eyre!("Failed to get configuration file path: {error}"))?;
 
-    print!("fsc-test: config_file:{:?}", config_file);
     let config = app_config::load_config(&config_file, None)
         .map_err(|error| eyre!("Failed to load configuration file: {error}"))?;
 
