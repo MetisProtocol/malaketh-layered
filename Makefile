@@ -4,9 +4,9 @@ all: clean
 	docker compose up -d
 #	./scripts/add_peers.sh 
 #	cp -fr nodes_config nodes	
-#	cp -fr nodes_config_bin nodes	
+	cp -fr nodes_config_bin nodes	
 #	docker compose -f compose-mala.yaml up -d
-	cargo run --bin malachitebft-eth-app -- testnet --nodes 3 --home nodes
+#	cargo run --bin malachitebft-eth-app -- testnet --nodes 3 --home nodes
 #	echo 👉 Grafana dashboard is available at http://localhost:3000
 	bash scripts/spawn.bash --nodes 3 --home nodes
 
