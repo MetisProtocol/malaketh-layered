@@ -410,24 +410,25 @@ impl State {
     }
 
     /// Returns the set of validators.
-    pub fn get_validator_set(&self, height: Height) -> ValidatorSet {
-        let num_validators = self.genesis.validator_set.len();
-        let selection_size = num_validators.div_ceil(2);
-
-        if num_validators <= selection_size {
-            return self.genesis.validator_set.clone();
-        }
-
-        ValidatorSet::new(
-            self.genesis
-                .validator_set
-                .iter()
-                .cycle()
-                .skip(height.as_u64() as usize % num_validators)
-                .take(selection_size)
-                .cloned()
-                .collect::<Vec<_>>(),
-        )
+    pub fn get_validator_set(&self, _height: Height) -> ValidatorSet {
+	    return self.genesis.validator_set.clone();
+        // let num_validators = self.genesis.validator_set.len();
+        // let selection_size = num_validators.div_ceil(2);
+        //
+        // if num_validators <= selection_size {
+        //     return self.genesis.validator_set.clone();
+        // }
+        //
+        // ValidatorSet::new(
+        //     self.genesis
+        //         .validator_set
+        //         .iter()
+        //         .cycle()
+        //         .skip(height.as_u64() as usize % num_validators)
+        //         .take(selection_size)
+        //         .cloned()
+        //         .collect::<Vec<_>>(),
+        // )
     }
 
     /// Verifies the signature of the proposal.
