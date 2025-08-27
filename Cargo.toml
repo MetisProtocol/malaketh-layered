@@ -52,6 +52,7 @@ config             = { version = "0.14", features = ["toml"], default-features =
 derive-where       = "1.5.0"
 directories        = "5.0.1"
 hex                = { version = "0.4.3", features = ["serde"] }
+humantime-serde    = "1.1.1"
 itertools          = "0.14"
 itf                = "0.2.3"
 prost              = "0.13"
@@ -60,7 +61,7 @@ prost-types        = "0.13"
 protox             = "0.8.0"
 rand               = { version = "0.8.5", features = ["std_rng"] }
 redb               = "2.4.0"
-serde              = "1.0"
+serde              = { version = "1.0", features = ["derive"] }
 serde_json         = "1.0"
 sha3               = "0.10"
 signature          = "2.2.0"

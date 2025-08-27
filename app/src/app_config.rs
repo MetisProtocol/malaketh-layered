@@ -14,6 +14,7 @@ pub struct EngineConfig {
     /// path of jwtsecret
     pub wt_path: String,
     /// block interval time
+    #[serde(with = "humantime_serde")]
     pub block_interval: Duration,
 }
 
