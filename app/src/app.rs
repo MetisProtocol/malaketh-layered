@@ -1,3 +1,4 @@
+use std::time::Duration;
 use bytes::Bytes;
 use color_eyre::eyre::{self, eyre};
 use ssz::{Decode, Encode};
@@ -23,6 +24,7 @@ pub async fn run(
     state: &mut State,
     channels: &mut Channels<TestContext>,
     engine: Engine,
+    block_interval: Duration,
     mut shutdown_rx: Receiver<()>,
 ) -> eyre::Result<()> {
     let mut shutdown_flag = false;
@@ -107,6 +109,11 @@ pub async fn run(
                         // When the node is not the proposer, store the block data,
                         // which will be passed to the execution client (EL) on commit.
                         state.store_undecided_proposal_data(bytes.clone()).await?;
+
+                        let time_interval = state.last_propose_time.elapsed();
+                        if time_interval < block_interval {
+                            tokio::time::sleep(block_interval-time_interval).await
+                        }
 
                         // Send it to consensus
                         if reply.send(proposal.clone()).is_err() {
