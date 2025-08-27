@@ -115,6 +115,10 @@ impl State {
         }
     }
 
+    pub fn reset_last_propose_time(&mut self) {
+        self.last_propose_time = Instant::now();
+    }
+
     /// Returns the earliest height available in the state
     pub async fn get_earliest_height(&self) -> Height {
         self.store

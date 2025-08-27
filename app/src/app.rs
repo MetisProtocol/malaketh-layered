@@ -13,6 +13,7 @@ use malachitebft_app_channel::app::types::{LocallyProposedValue, ProposedValue};
 use malachitebft_app_channel::{AppMsg, Channels, NetworkMsg};
 use malachitebft_app_channel::app::engine::host::Next;
 use tokio::sync::mpsc::Receiver;
+use tokio::time::Instant;
 use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::json_structures::ExecutionBlock;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
@@ -111,9 +112,11 @@ pub async fn run(
                         state.store_undecided_proposal_data(bytes.clone()).await?;
 
                         let time_interval = state.last_propose_time.elapsed();
+                        debug!("time_interval:{}, block_interval:{}", time_interval, block_interval);
                         if time_interval < block_interval {
                             tokio::time::sleep(block_interval-time_interval).await
                         }
+                        state.reset_last_propose_time();
 
                         // Send it to consensus
                         if reply.send(proposal.clone()).is_err() {
