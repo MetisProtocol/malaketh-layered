@@ -43,7 +43,6 @@ pub struct State {
     #[allow(dead_code)]
     rng: StdRng,
 
-    pub last_propose_time: Instant,
     pub current_height: Height,
     pub current_round: Round,
     pub current_proposer: Option<Address>,
@@ -106,17 +105,12 @@ impl State {
             rng: StdRng::seed_from_u64(seed_from_address(&address)),
             // peers: HashSet::new(),
 
-            last_propose_time: Instant::now(),
             latest_block: None,
 
             txs_count: 0,
             chain_bytes: 0,
             start_time: Instant::now(),
         }
-    }
-
-    pub fn reset_last_propose_time(&mut self) {
-        self.last_propose_time = Instant::now();
     }
 
     /// Returns the earliest height available in the state

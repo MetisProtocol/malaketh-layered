@@ -4,6 +4,7 @@ moniker = "app-1"
 engine_url = "http://localhost:18551"
 eth_url = "http://localhost:18545"
 wt_path = "./assets/jwtsecret"
+block_interval = "1s"
 
 [logging]
 log_level = "debug"

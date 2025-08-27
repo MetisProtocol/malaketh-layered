@@ -95,6 +95,7 @@ pub async fn run(
                         // We need to ask the execution engine for a new value to
                         // propose. Then we send it back to consensus.
                         let latest_block = state.latest_block.expect("Head block hash is not set");
+                        engine.sleep_for_block_interval(latest_block.timestamp, block_interval).await;
                         let execution_payload = engine.generate_block(&latest_block).await?;
                         debug!("🌈 Got execution payload: {:?}", execution_payload);
 
@@ -109,13 +110,6 @@ pub async fn run(
                         // When the node is not the proposer, store the block data,
                         // which will be passed to the execution client (EL) on commit.
                         state.store_undecided_proposal_data(bytes.clone()).await?;
-
-                        let time_interval = state.last_propose_time.elapsed();
-                        debug!("time_interval:{:?}, block_interval:{:?}", time_interval, block_interval);
-                        if time_interval < block_interval {
-                            tokio::time::sleep(block_interval-time_interval).await
-                        }
-                        state.reset_last_propose_time();
 
                         // Send it to consensus
                         if reply.send(proposal.clone()).is_err() {

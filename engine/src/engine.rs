@@ -6,7 +6,7 @@ use alloy_rpc_types_engine::{
     ExecutionPayloadV3, ForkchoiceUpdated, PayloadAttributes, PayloadStatus, PayloadStatusEnum,
 };
 
-use malachitebft_eth_types::{Address, BlockHash, B256};
+use malachitebft_eth_types::{Address, BlockHash, BlockTimestamp, B256};
 
 use crate::{engine_rpc::EngineRPC, ethereum_rpc::EthereumRPC, json_structures::ExecutionBlock};
 /// RPC client for Engine API.
@@ -124,6 +124,19 @@ impl Engine {
         self.api
             .new_payload(execution_payload, versioned_hashes, parent_block_hash)
             .await
+    }
+
+    pub async fn sleep_for_block_interval(
+        &self,
+        latest_block_timestamp: BlockTimestamp,
+        block_interval: Duration,
+    ) {
+        let now = self._timestamp_now();
+        let time_interval = Duration::from_millis(now - latest_block_timestamp);
+        debug!("time_interval:{:?}, block_interval:{:?}", time_interval, block_interval);
+        if time_interval < block_interval {
+            tokio::time::sleep(block_interval-time_interval).await
+        }
     }
 
     /// Returns the duration since the unix epoch.
