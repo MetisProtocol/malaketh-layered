@@ -4,21 +4,21 @@ use color_eyre::eyre::{eyre, Result};
 use tracing::{info, trace};
 
 use malachitebft_app_channel::app::node::Node;
+use malachitebft_config::*;
 use malachitebft_eth_cli::args::{Args, Commands};
 use malachitebft_eth_cli::cmd::init::InitCmd;
 use malachitebft_eth_cli::cmd::start::StartCmd;
 use malachitebft_eth_cli::cmd::testnet::TestnetCmd;
-use malachitebft_eth_cli::{runtime, logging};
-use malachitebft_eth_types::Height;
-use malachitebft_config::*;
+use malachitebft_eth_cli::{logging, runtime};
+use malachitebft_test::{Genesis, Height, PrivateKey, ValidatorSet, Validator};
 
 mod app;
+mod app_config;
 mod metrics;
 mod node;
 mod state;
 mod store;
 mod streaming;
-mod app_config;
 
 use node::App;
 
@@ -39,7 +39,7 @@ fn main() -> Result<()> {
     // Override logging configuration (if exists) with optional command-line parameters.
     let mut logging = LoggingConfig::default();
     if let Some(log_level) = args.log_level {
-       logging.log_level = log_level;
+        logging.log_level = log_level;
     }
     if let Some(log_format) = args.log_format {
         logging.log_format = log_format;
@@ -78,13 +78,28 @@ fn start(args: &Args, cmd: &StartCmd) -> Result<()> {
 
     trace!(?config, "Configuration");
 
+    // Load genesis file
+    let genesis_file = args.get_genesis_file_path()?;
+    let genesis_content = std::fs::read_to_string(&genesis_file)
+        .map_err(|error| eyre!("Failed to read genesis file: {error}"))?;
+    let genesis: Genesis = serde_json::from_str(&genesis_content)
+        .map_err(|error| eyre!("Failed to parse genesis file: {error}"))?;
+
+    // Load private key file
+    let private_key_file = args.get_priv_validator_key_file_path()?;
+    let private_key_content = std::fs::read_to_string(&private_key_file)
+        .map_err(|error| eyre!("Failed to read private key file: {error}"))?;
+    let private_key: PrivateKey = serde_json::from_str(&private_key_content)
+        .map_err(|error| eyre!("Failed to parse private key file: {error}"))?;
+
     // Setup the application
     let app = App {
-        config_file,
         home_dir: args.get_home_dir()?,
-        genesis_file: args.get_genesis_file_path()?,
-        private_key_file: args.get_priv_validator_key_file_path()?,
+        config,
+        validator_set: genesis.validator_set.clone(),
+        private_key,
         start_height: cmd.start_height.map(Height::new),
+        middleware: None,
     };
 
     // Start the node
@@ -93,13 +108,21 @@ fn start(args: &Args, cmd: &StartCmd) -> Result<()> {
 }
 
 fn init(args: &Args, cmd: &InitCmd) -> Result<()> {
-    // Setup the application
+    // Generate a dummy private key for the validator
+    let dummy_private_key = PrivateKey::generate(rand::thread_rng());
+    let dummy_public_key = dummy_private_key.public_key();
+    
+    // Create a dummy validator with voting power 1
+    let dummy_validator = Validator::new(dummy_public_key, 1);
+    
+    // Setup the application with minimal data for init command
     let app = App {
-        config_file: Default::default(),
         home_dir: args.get_home_dir()?,
-        genesis_file: args.get_genesis_file_path()?,
-        private_key_file: args.get_priv_validator_key_file_path()?,
+        config: Default::default(),
+        validator_set: ValidatorSet::new(vec![dummy_validator]), // One dummy validator
+        private_key: PrivateKey::generate(rand::thread_rng()),
         start_height: Some(Height::new(1)), // We always start at height 1
+        middleware: None,
     };
 
     cmd.run(
@@ -112,15 +135,24 @@ fn init(args: &Args, cmd: &InitCmd) -> Result<()> {
 }
 
 fn testnet(args: &Args, cmd: &TestnetCmd) -> Result<()> {
-    // Setup the application
+    println!("testnet");
+    // Generate a dummy private key for the validator
+    let dummy_private_key = PrivateKey::generate(rand::thread_rng());
+    let dummy_public_key = dummy_private_key.public_key();
+    
+    // Create a dummy validator with voting power 1
+    let dummy_validator = Validator::new(dummy_public_key, 1);
+    
+    // Setup the application with minimal data for testnet command
     let app = App {
-        config_file: Default::default(),
         home_dir: args.get_home_dir()?,
-        genesis_file: args.get_genesis_file_path()?,
-        private_key_file: args.get_priv_validator_key_file_path()?,
+        config: Default::default(),
+        validator_set: ValidatorSet::new(vec![dummy_validator]), // One dummy validator
+        private_key: PrivateKey::generate(rand::thread_rng()),
         start_height: Some(Height::new(1)), // We always start at height 1
+        middleware: None,
     };
-
+    println!("testnet2");
     cmd.run(&app, &args.get_home_dir()?)
         .map_err(|error| eyre!("Failed to run testnet command {:?}", error))
 }
