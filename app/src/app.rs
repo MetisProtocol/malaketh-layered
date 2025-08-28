@@ -260,7 +260,7 @@ pub async fn run(
                         engine.sleep_for_block_interval(state.latest_block_timestamp, block_interval).await;
 
                         // Save the latest block
-                        state.latest_block_timestamp = engine.time_now_millis();
+                        state.latest_block_timestamp = new_block_timestamp*1000;
                         state.latest_block = Some(ExecutionBlock {
                             block_hash: new_block_hash,
                             block_number: new_block_number,

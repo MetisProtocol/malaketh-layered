@@ -131,14 +131,14 @@ impl Engine {
         latest_block_timestamp_millis: u64,
         block_interval: Duration,
     ) {
-        let now = self.time_now_millis();
+        let now = self._timestamp_now_millis();
         debug!("block interval. time_now:{:?}, last_blocktime:{:?}", now, latest_block_timestamp_millis);
         // when blocktime < 1, eth block timestamp is forwarder than now
         if now <= latest_block_timestamp_millis {
             tokio::time::sleep(block_interval).await;
             return
         }
-        
+
         let time_interval = Duration::from_millis(now - latest_block_timestamp_millis);
         debug!("block interval. time_interval:{:?}, block_interval:{:?}", time_interval, block_interval);
         if time_interval < block_interval {
@@ -154,7 +154,7 @@ impl Engine {
             .as_secs()
     }
 
-    pub fn time_now_millis(&self) -> u64 {
+    fn _timestamp_now_millis(&self) -> u64 {
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
