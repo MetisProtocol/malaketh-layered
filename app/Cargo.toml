@@ -34,6 +34,7 @@ rand.workspace = true
 redb.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+humantime-serde.workspace = true
 sha3.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

@@ -1,3 +1,4 @@
+use std::time::Duration;
 use bytes::Bytes;
 use color_eyre::eyre::{self, eyre};
 use ssz::{Decode, Encode};
@@ -23,6 +24,7 @@ pub async fn run(
     state: &mut State,
     channels: &mut Channels<TestContext>,
     engine: Engine,
+    block_interval: Duration,
     mut shutdown_rx: Receiver<()>,
 ) -> eyre::Result<()> {
     let mut shutdown_flag = false;
@@ -232,6 +234,8 @@ pub async fn run(
                         let payload_status = engine
                             .notify_new_block(execution_payload, versioned_hashes)
                             .await?;
+                        // Simulated Execution Time
+                        // tokio::time::sleep(Duration::from_millis(500)).await;
                         if payload_status.status.is_invalid() {
                             return Err(eyre!("Invalid payload status: {}", payload_status.status));
                         }
@@ -251,7 +255,12 @@ pub async fn run(
                         // When that happens, we store the decided value in our store
                         state.commit(certificate).await?;
 
+                        // Pause briefly before starting next height, just to make following the logs easier
+                        // tokio::time::sleep(Duration::from_millis(500)).await;
+                        engine.sleep_for_block_interval(state.latest_block_timestamp, block_interval).await;
+
                         // Save the latest block
+                        state.latest_block_timestamp = new_block_timestamp*1000;
                         state.latest_block = Some(ExecutionBlock {
                             block_hash: new_block_hash,
                             block_number: new_block_number,
@@ -259,9 +268,6 @@ pub async fn run(
                             timestamp: new_block_timestamp,
                             prev_randao: new_block_prev_randao,
                         });
-
-                        // Pause briefly before starting next height, just to make following the logs easier
-                        // tokio::time::sleep(Duration::from_millis(500)).await;
 
                         // And then we instruct consensus to start the next height
                         if reply

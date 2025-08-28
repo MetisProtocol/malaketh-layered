@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::time::Duration;
 use malachitebft_config::*;
 use malachitebft_app_channel::app::node::NodeConfig;
 
@@ -12,6 +13,9 @@ pub struct EngineConfig {
     pub eth_url: String,
     /// path of jwtsecret
     pub wt_path: String,
+    /// block interval time
+    #[serde(with = "humantime_serde")]
+    pub block_interval: Duration,
 }
 
 impl Default for EngineConfig {
@@ -20,6 +24,7 @@ impl Default for EngineConfig {
             engine_url: "http://localhost:8551".to_string(),
             eth_url: "http://localhost:8545".to_string(),
             wt_path: "./assets/jwtsecret".to_string(),
+            block_interval: Duration::from_millis(1000),
         }
     }
 }

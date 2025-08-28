@@ -212,7 +212,7 @@ impl Node for App {
         });
 
         let app_handle = tokio::spawn(async move {
-            if let Err(e) = crate::app::run(&mut state, &mut channels, engine, shutdown_rx).await {
+            if let Err(e) = crate::app::run(&mut state, &mut channels, engine, config.engine.block_interval, shutdown_rx).await {
                 tracing::error!(%e, "Application error");
             }
         }
