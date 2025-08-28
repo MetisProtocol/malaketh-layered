@@ -49,6 +49,8 @@ pub struct State {
     // pub peers: HashSet<PeerId>,
 
     pub latest_block: Option<ExecutionBlock>,
+    // Timestamp of the latest block in milliseconds
+    pub latest_block_timestamp: u64,
 
     // For stats
     pub txs_count: u64,
@@ -106,6 +108,7 @@ impl State {
             // peers: HashSet::new(),
 
             latest_block: None,
+            latest_block_timestamp: 0,
 
             txs_count: 0,
             chain_bytes: 0,

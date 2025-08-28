@@ -6,7 +6,7 @@ use alloy_rpc_types_engine::{
     ExecutionPayloadV3, ForkchoiceUpdated, PayloadAttributes, PayloadStatus, PayloadStatusEnum,
 };
 
-use malachitebft_eth_types::{Address, BlockHash, BlockTimestamp, B256};
+use malachitebft_eth_types::{Address, BlockHash, B256};
 
 use crate::{engine_rpc::EngineRPC, ethereum_rpc::EthereumRPC, json_structures::ExecutionBlock};
 /// RPC client for Engine API.
@@ -128,14 +128,21 @@ impl Engine {
 
     pub async fn sleep_for_block_interval(
         &self,
-        latest_block_timestamp: BlockTimestamp,
+        latest_block_timestamp_millis: u64,
         block_interval: Duration,
     ) {
-        let now = self._timestamp_now();
-        let time_interval = Duration::from_millis(now - latest_block_timestamp);
-        debug!("time_interval:{:?}, block_interval:{:?}", time_interval, block_interval);
+        let now = self.time_now_millis();
+        debug!("block interval. time_now:{:?}, last_blocktime:{:?}", now, latest_block_timestamp_millis);
+        // when blocktime < 1, eth block timestamp is forwarder than now
+        if now <= latest_block_timestamp_millis {
+            tokio::time::sleep(block_interval).await;
+            return
+        }
+        // latest_block_timestamp is second, so *1000 to millisecond
+        let time_interval = Duration::from_millis(now - latest_block_timestamp_millis);
+        debug!("block interval. time_interval:{:?}, block_interval:{:?}", time_interval, block_interval);
         if time_interval < block_interval {
-            tokio::time::sleep(block_interval-time_interval).await
+            tokio::time::sleep(block_interval - time_interval).await
         }
     }
 
@@ -145,5 +152,12 @@ impl Engine {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_secs()
+    }
+
+    pub fn time_now_millis(&self) -> u64 {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
     }
 }
