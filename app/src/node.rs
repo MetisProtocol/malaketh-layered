@@ -1,53 +1,36 @@
-//! The Application (or Node) definition. The Node trait implements the Consensus context and the
-//! cryptographic library used for signing.
+#![allow(clippy::too_many_arguments)]
 
 use std::path::PathBuf;
-use std::str::FromStr;
+use std::sync::Arc;
 
 use async_trait::async_trait;
-use color_eyre::eyre;
+use malachitebft_test::codec::json::JsonCodec;
+use malachitebft_test::codec::proto::ProtobufCodec;
+use rand::{CryptoRng, RngCore};
+use tokio::task::JoinHandle;
+use tracing::Instrument;
+
+use malachitebft_app_channel::app::config::*;
 use malachitebft_app_channel::app::events::{RxEvent, TxEvent};
 use malachitebft_app_channel::app::node::{
     CanGeneratePrivateKey, CanMakeConfig, CanMakeGenesis, CanMakePrivateKeyFile, EngineHandle,
-    MakeConfigSettings, Node, NodeHandle,};
-use malachitebft_eth_engine::engine::Engine;
-use malachitebft_eth_engine::engine_rpc::EngineRPC;
-use malachitebft_eth_engine::ethereum_rpc::EthereumRPC;
-use rand::{CryptoRng, RngCore};
-
-use malachitebft_app_channel::app::metrics::SharedRegistry;
+    MakeConfigSettings, Node, NodeHandle,
+};
 use malachitebft_app_channel::app::types::core::VotingPower;
 use malachitebft_app_channel::app::types::Keypair;
 
+use malachitebft_test::middleware::{DefaultMiddleware, Middleware};
+
 // Use the same types used for integration tests.
 // A real application would use its own types and context instead.
-use malachitebft_eth_cli::metrics;
-use malachitebft_eth_types::codec::proto::ProtobufCodec;
-use malachitebft_eth_types::{
+use malachitebft_test::{
     Address, Ed25519Provider, Genesis, Height, PrivateKey, PublicKey, TestContext, Validator,
     ValidatorSet,
 };
-use tokio::{
-    task::JoinHandle,
-    signal::unix::{signal, SignalKind},
-    sync::mpsc,
-};
-use tracing::Instrument;
-use url::Url;
-use crate::app_config::{load_config, Config};
-use crate::metrics::DbMetrics;
+
+use crate::app_config::Config;
 use crate::state::State;
 use crate::store::Store;
-
-/// Main application struct implementing the consensus node functionality
-#[derive(Clone)]
-pub struct App {
-    pub config_file: PathBuf,
-    pub home_dir: PathBuf,
-    pub genesis_file: PathBuf,
-    pub private_key_file: PathBuf,
-    pub start_height: Option<Height>,
-}
 
 pub struct Handle {
     pub app: JoinHandle<()>,
@@ -69,25 +52,36 @@ impl NodeHandle<TestContext> for Handle {
     }
 }
 
+/// Main application struct implementing the consensus node functionality
+#[derive(Clone)]
+pub struct App {
+    pub home_dir: PathBuf,
+    pub config: Config,
+    pub validator_set: ValidatorSet,
+    pub private_key: PrivateKey,
+    pub start_height: Option<Height>,
+    pub middleware: Option<Arc<dyn Middleware>>,
+}
+
 #[async_trait]
 impl Node for App {
     type Context = TestContext;
+    type Config = Config;
     type Genesis = Genesis;
     type PrivateKeyFile = PrivateKey;
     type SigningProvider = Ed25519Provider;
     type NodeHandle = Handle;
-    type Config = Config;
 
     fn get_home_dir(&self) -> PathBuf {
         self.home_dir.to_owned()
     }
 
-    fn get_signing_provider(&self, private_key: PrivateKey) -> Self::SigningProvider {
-        Ed25519Provider::new(private_key)
+    fn load_config(&self) -> eyre::Result<Self::Config> {
+        Ok(self.config.clone())
     }
 
-    fn load_config(&self) -> eyre::Result<Self::Config> {
-        load_config(&self.config_file, Some("MALACHITE"))
+    fn get_signing_provider(&self, private_key: PrivateKey) -> Self::SigningProvider {
+        Ed25519Provider::new(private_key)
     }
 
     fn get_address(&self, pk: &PublicKey) -> Address {
@@ -107,116 +101,76 @@ impl Node for App {
     }
 
     fn load_private_key_file(&self) -> eyre::Result<Self::PrivateKeyFile> {
-        let private_key = std::fs::read_to_string(&self.private_key_file)?;
-        serde_json::from_str(&private_key).map_err(|e| e.into())
+        Ok(self.private_key.clone())
     }
 
     fn load_genesis(&self) -> eyre::Result<Self::Genesis> {
-        let genesis = std::fs::read_to_string(&self.genesis_file)?;
-        serde_json::from_str(&genesis).map_err(|e| e.into())
+        let validators = self
+            .validator_set
+            .validators
+            .iter()
+            .map(|v| (v.public_key, v.voting_power))
+            .collect();
+
+        Ok(self.make_genesis(validators))
     }
 
     async fn start(&self) -> eyre::Result<Handle> {
         let config = self.load_config()?;
 
         let span = tracing::error_span!("node", moniker = %config.moniker);
-        let _enter = span.enter();
+        let _guard = span.enter();
 
-        let private_key_file = self.load_private_key_file()?;
-        let private_key = self.load_private_key(private_key_file);
-        let public_key = self.get_public_key(&private_key);
+        let middleware = self
+            .middleware
+            .clone()
+            .unwrap_or_else(|| Arc::new(DefaultMiddleware));
+
+        let ctx = TestContext::with_middleware(middleware);
+
+        let public_key = self.get_public_key(&self.private_key);
         let address = self.get_address(&public_key);
-        let signing_provider = self.get_signing_provider(private_key);
-        let ctx = TestContext::new();
-
+        let signing_provider = self.get_signing_provider(self.private_key.clone());
         let genesis = self.load_genesis()?;
-        let initial_validator_set = genesis.validator_set.clone();
 
         let (mut channels, engine_handle) = malachitebft_app_channel::start_engine(
             ctx.clone(),
             self.clone(),
             config.clone(),
             ProtobufCodec, // WAL codec
-            ProtobufCodec, // Network codec
+            JsonCodec,     // Network codec
             self.start_height,
-            initial_validator_set,
+            self.validator_set.clone(),
         )
         .await?;
 
+        drop(_guard);
+
+        let db_path = self.get_home_dir().join("db");
+        std::fs::create_dir_all(&db_path)?;
+
+        let store = Store::open(db_path.join("store.db")).await?;
+        let start_height = self.start_height.unwrap_or_default();
+
+        let mut state = State::new(
+            ctx,
+            config,
+            genesis.clone(),
+            address,
+            start_height,
+            store,
+            signing_provider,
+        );
+
         let tx_event = channels.events.clone();
 
-        let registry = SharedRegistry::global().with_moniker(&config.moniker);
-        let metrics = DbMetrics::register(&registry);
-
-        if config.metrics.enabled {
-            tokio::spawn(metrics::serve(config.metrics.listen_addr));
-        }
-
-        let db_dir = self.get_home_dir().join("db");
-        std::fs::create_dir_all(&db_dir)?;
-
-        let store = Store::open(self.get_home_dir().join("store.db"), metrics)?;
-        let start_height = self.start_height.unwrap_or_default();
-        let mut state = State::new(genesis, ctx, signing_provider, address, start_height, store);
-
-        let engine: Engine = {
-            let engine_url: Url = {
-                let url = config.engine.engine_url.as_str();
-                if url.is_empty() {
-                    let engine_port = match config.moniker.as_str() {
-                        "test-0" => 8551,
-                        "test-1" => 18551,
-                        "test-2" => 28551,
-                        _ => 8551,
-                    };
-                    Url::parse(&format!("http://localhost:{engine_port}").as_str())?
-                } else {
-                    Url::parse(url)?
+        let app_handle = tokio::spawn(
+            async move {
+                if let Err(e) = crate::app::run(genesis, &mut state, &mut channels).await {
+                    tracing::error!("Application has failed with an error: {e}");
                 }
-            };
-            let jwt_path = PathBuf::from_str(config.engine.wt_path.as_str())?; // Should be the same secret used by the execution client.
-            let eth_url: Url = {
-                let url = config.engine.eth_url.as_str();
-                if url.is_empty(){
-                    let eth_port = match config.moniker.as_str() {
-                        "test-0" => 8545,
-                        "test-1" => 18545,
-                        "test-2" => 28545,
-                        _ => 8545,
-                    };
-                    Url::parse(&format!("http://localhost:{eth_port}"))?
-                } else {
-                    Url::parse(&url)?
-                }
-            };
-            Engine::new(
-                EngineRPC::new(engine_url, jwt_path.as_path())?,
-                EthereumRPC::new(eth_url)?,
-            )
-        };
-
-        let span = tracing::error_span!("node", moniker = %config.moniker);
-        // SIGTERM
-        let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
-        let _ = tokio::spawn(async move {
-            let mut sigterm = signal(SignalKind::terminate())
-                .map_err(|e| eyre::eyre!("Failed to register SIGTERM handler: {}", e))?;
-
-            // waiting for SIGTERM
-            sigterm.recv().await;
-            tracing::info!("Received SIGTERM, initiating shutdown");
-
-            // send shutdown
-            let _ = shutdown_tx.send(());
-            Ok::<_, eyre::Error>(())
-        });
-
-        let app_handle = tokio::spawn(async move {
-            if let Err(e) = crate::app::run(&mut state, &mut channels, engine, config.engine.block_interval, shutdown_rx).await {
-                tracing::error!(%e, "Application error");
             }
-        }
-            .instrument(span)
+            .instrument(span),
         );
 
         Ok(Handle {
@@ -231,7 +185,6 @@ impl Node for App {
         handles.app.await.map_err(Into::into)
     }
 }
-
 
 impl CanMakeGenesis for App {
     fn make_genesis(&self, validators: Vec<(PublicKey, VotingPower)>) -> Self::Genesis {
@@ -266,14 +219,11 @@ impl CanMakeConfig for App {
     }
 }
 
-
 /// Generate configuration for node "index" out of "total" number of nodes.
 fn make_config(index: usize, total: usize, settings: MakeConfigSettings) -> Config {
     use itertools::Itertools;
     use rand::seq::IteratorRandom;
     use rand::Rng;
-
-    use malachitebft_app_channel::app::config::*;
 
     const CONSENSUS_BASE_PORT: usize = 27000;
     const METRICS_BASE_PORT: usize = 29000;
@@ -282,11 +232,11 @@ fn make_config(index: usize, total: usize, settings: MakeConfigSettings) -> Conf
     let metrics_port = METRICS_BASE_PORT + index;
 
     Config {
-        moniker: format!("app-{}", index),
+        moniker: format!("test-{index}"),
         consensus: ConsensusConfig {
-            // Current channel app does not support parts-only value payload properly as Init does not include valid_round
+            // Current test app does not support proposal-only value payload properly as Init does not include valid_round
             value_payload: ValuePayload::ProposalAndParts,
-            queue_capacity: 100,
+            queue_capacity: 100, // Deprecated, derived from `sync.parallel_requests`
             timeouts: TimeoutConfig::default(),
             p2p: P2pConfig {
                 protocol: PubSubProtocol::default(),
@@ -330,8 +280,9 @@ fn make_config(index: usize, total: usize, settings: MakeConfigSettings) -> Conf
             listen_addr: format!("127.0.0.1:{metrics_port}").parse().unwrap(),
         },
         runtime: settings.runtime,
-        logging: LoggingConfig::default(),
         value_sync: ValueSyncConfig::default(),
+        logging: LoggingConfig::default(),
+        // test: TestConfig::default(),
         engine: Default::default(),
     }
 }
