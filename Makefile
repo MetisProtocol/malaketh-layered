@@ -28,4 +28,4 @@ spam:
 
 add-new-peer:
 	docker compose -f compose-reth3.yaml up -d
-	bash scripts/spawn-mala3.bash --nodes 3 --home nodes
+	bash scripts/spawn-new-peer.bash --nodes 3 --home nodes
