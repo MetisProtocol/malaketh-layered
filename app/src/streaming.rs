@@ -1,10 +1,10 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BinaryHeap, HashSet};
 
+use malachitebft_app_channel::app::consensus::PeerId;
 use malachitebft_app_channel::app::streaming::{Sequence, StreamId, StreamMessage};
 use malachitebft_app_channel::app::types::core::Round;
-use malachitebft_app_channel::app::types::PeerId;
-use malachitebft_eth_types::{Address, Height, ProposalInit, ProposalPart};
+use malachitebft_test::{Address, Height, ProposalFin, ProposalInit, ProposalPart};
 
 struct MinSeq<T>(StreamMessage<T>);
 
@@ -103,6 +103,16 @@ pub struct ProposalParts {
     pub round: Round,
     pub proposer: Address,
     pub parts: Vec<ProposalPart>,
+}
+
+impl ProposalParts {
+    pub fn init(&self) -> Option<&ProposalInit> {
+        self.parts.iter().find_map(|p| p.as_init())
+    }
+
+    pub fn fin(&self) -> Option<&ProposalFin> {
+        self.parts.iter().find_map(|p| p.as_fin())
+    }
 }
 
 #[derive(Default)]
