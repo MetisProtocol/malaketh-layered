@@ -1,13 +1,16 @@
 //! Testnet command
 
+use clap::Parser;
+use color_eyre::{eyre::eyre, Result};
 use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
-use clap::Parser;
-use color_eyre::{eyre::eyre, Result};
 use tracing::info;
 
-use malachitebft_app::node::{CanMakeConfig, Node, MakeConfigSettings, CanGeneratePrivateKey, CanMakeGenesis, CanMakePrivateKeyFile};
+use malachitebft_app::node::{
+    CanGeneratePrivateKey, CanMakeConfig, CanMakeGenesis, CanMakePrivateKeyFile,
+    MakeConfigSettings, Node,
+};
 use malachitebft_config::*;
 
 use crate::args::Args;
@@ -114,6 +117,7 @@ impl TestnetCmd {
     where
         N: Node + CanMakeConfig + CanMakePrivateKeyFile + CanGeneratePrivateKey + CanMakeGenesis,
     {
+        println!("TestnetCmd.run");
         let runtime = match self.runtime {
             RuntimeFlavour::SingleThreaded => RuntimeConfig::SingleThreaded,
             RuntimeFlavour::MultiThreaded(n) => RuntimeConfig::MultiThreaded { worker_threads: n },
@@ -137,7 +141,7 @@ impl TestnetCmd {
         };
 
         testnet(node, self.nodes, home_dir, self.deterministic, settings)
-        .map_err(|e| eyre!("Failed to generate testnet configuration: {:?}", e))
+            .map_err(|e| eyre!("Failed to generate testnet configuration: {:?}", e))
     }
 }
 
@@ -153,10 +157,11 @@ where
     N: Node + CanMakeConfig + CanMakePrivateKeyFile + CanGeneratePrivateKey + CanMakeGenesis,
 {
     let private_keys = crate::new::generate_private_keys(node, nodes, deterministic);
-    let public_keys = private_keys
+    let public_keys: Vec<_> = private_keys
         .iter()
         .map(|pk| node.get_public_key(pk))
         .collect();
+    println!("public_keys={}", public_keys.len());
     let genesis = crate::new::generate_genesis(node, public_keys, deterministic);
 
     for (i, private_key) in private_keys.iter().enumerate().take(nodes) {
