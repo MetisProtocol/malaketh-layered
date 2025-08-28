@@ -12,6 +12,7 @@ all: clean
 
 stop:
 	docker compose down
+	docker compose -f compose-reth3.yaml down
 
 clean: clean-prometheus
 	rm -rf ./assets/genesis.json
@@ -24,3 +25,7 @@ clean-prometheus: stop
 
 spam:
 	cargo run --bin malachitebft-eth-utils spam --time=60 --rate=500 --rpc-url=127.0.0.1:8545
+
+add-new-peer:
+	docker compose -f compose-reth3.yaml up -d
+	bash scripts/spawn-mala3.bash --nodes 3 --home nodes
