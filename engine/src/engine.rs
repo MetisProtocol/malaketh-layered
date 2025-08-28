@@ -138,7 +138,7 @@ impl Engine {
             tokio::time::sleep(block_interval).await;
             return
         }
-        // latest_block_timestamp is second, so *1000 to millisecond
+        
         let time_interval = Duration::from_millis(now - latest_block_timestamp_millis);
         debug!("block interval. time_interval:{:?}, block_interval:{:?}", time_interval, block_interval);
         if time_interval < block_interval {
