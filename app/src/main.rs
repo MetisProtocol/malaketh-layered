@@ -10,7 +10,7 @@ use malachitebft_eth_cli::cmd::init::InitCmd;
 use malachitebft_eth_cli::cmd::start::StartCmd;
 use malachitebft_eth_cli::cmd::testnet::TestnetCmd;
 use malachitebft_eth_cli::{logging, runtime};
-use malachitebft_test::{Genesis, Height, PrivateKey, ValidatorSet, Validator};
+use malachitebft_test::{Genesis, Height, PrivateKey, Validator, ValidatorSet};
 
 mod app;
 mod app_config;
@@ -80,6 +80,7 @@ fn start(args: &Args, cmd: &StartCmd) -> Result<()> {
 
     // Load genesis file
     let genesis_file = args.get_genesis_file_path()?;
+    println!("{:?}", genesis_file);
     let genesis_content = std::fs::read_to_string(&genesis_file)
         .map_err(|error| eyre!("Failed to read genesis file: {error}"))?;
     let genesis: Genesis = serde_json::from_str(&genesis_content)
@@ -111,10 +112,10 @@ fn init(args: &Args, cmd: &InitCmd) -> Result<()> {
     // Generate a dummy private key for the validator
     let dummy_private_key = PrivateKey::generate(rand::thread_rng());
     let dummy_public_key = dummy_private_key.public_key();
-    
+
     // Create a dummy validator with voting power 1
     let dummy_validator = Validator::new(dummy_public_key, 1);
-    
+
     // Setup the application with minimal data for init command
     let app = App {
         home_dir: args.get_home_dir()?,
@@ -139,10 +140,10 @@ fn testnet(args: &Args, cmd: &TestnetCmd) -> Result<()> {
     // Generate a dummy private key for the validator
     let dummy_private_key = PrivateKey::generate(rand::thread_rng());
     let dummy_public_key = dummy_private_key.public_key();
-    
+
     // Create a dummy validator with voting power 1
     let dummy_validator = Validator::new(dummy_public_key, 1);
-    
+
     // Setup the application with minimal data for testnet command
     let app = App {
         home_dir: args.get_home_dir()?,
