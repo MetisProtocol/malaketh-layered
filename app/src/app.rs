@@ -46,9 +46,7 @@ pub async fn run(
 
                         state.set_current_height(start_height).await;
 
-                        debug!("start_height: {:?}", start_height);
-
-                        info!("🟢🟢 Consensus is ready");
+                        info!("🟢🟢 Consensus is ready!!! start_height: {:?}", start_height);
 
                         // Node start-up: https://hackmd.io/@danielrachi/engine_api#Node-startup
                         // Check compatibility with execution client
