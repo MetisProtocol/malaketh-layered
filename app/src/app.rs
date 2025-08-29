@@ -38,7 +38,6 @@ pub async fn run(
                     // that Malachite is ready to start consensus
                     AppMsg::ConsensusReady { reply } => {
                         let start_height = state
-                            .store
                             .max_decided_value_height()
                             .await
                             .map(|height| height.increment())
