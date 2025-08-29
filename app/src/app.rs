@@ -244,7 +244,7 @@ pub async fn run(
                             .notify_new_block(execution_payload, versioned_hashes)
                             .await?;
                         // Simulated Execution Time
-                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        // tokio::time::sleep(Duration::from_millis(500)).await;
                         if payload_status.status.is_invalid() {
                             return Err(eyre!("Invalid payload status: {}", payload_status.status));
                         }
