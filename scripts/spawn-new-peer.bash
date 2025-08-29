@@ -1,85 +1,95 @@
 #!/usr/bin/env bash
 
-# This script takes:
-# - a number of nodes to run as an argument,
-# - the home directory for the nodes configuration folders
+# This script spawns a new peer node (node 3) using malachitebft-eth-app
+# Home directory: nodes/3
 
 function help {
-    echo "Usage: spawn.sh [--help] --nodes NODES_COUNT --home NODES_HOME [--app APP_BINARY] [--no-reset]"
+    echo "Usage: spawn-new-peer.bash [--help] [--no-reset]"
+    echo "  --help      Show this help message"
+    echo "  --no-reset  Don't reset the database (keep existing data)"
 }
 
 # Parse arguments
+NO_RESET=0
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --help) help; exit 0 ;;
-        --nodes) NODES_COUNT="$2"; shift ;;
-        --home) NODES_HOME="$2"; shift ;;
-        --app) APP_BINARY="$2"; shift ;;
-        --no-reset) NO_RESET=1; shift ;;
+        --no-reset) NO_RESET=1 ;;
         *) echo "Unknown parameter passed: $1"; help; exit 1 ;;
     esac
     shift
 done
 
-# Check required arguments
-if [[ -z "$NODES_COUNT" ]]; then
-    help
-    exit 1
-fi
+# Fixed configuration
+NODE_ID=3
+NODES_HOME="nodes"
+APP_BINARY="malachitebft-eth-app"
+NODE_HOME="$NODES_HOME/$NODE_ID"
 
-if [[ -z "$NODES_HOME" ]]; then
-    help
-    exit 1
-fi
+echo "Starting new peer node $NODE_ID..."
 
-if [[ -z "$APP_BINARY" ]]; then
-    APP_BINARY="malachitebft-eth-app"
-fi
-
+# Compile the application
 echo "Compiling '$APP_BINARY'..."
 cargo build -p $APP_BINARY
 
+if [ $? -ne 0 ]; then
+    echo "Failed to compile $APP_BINARY"
+    exit 1
+fi
+
 export RUST_BACKTRACE=full
 
-# Create nodes and logs directories, run nodes
-#for NODE in $(seq 0 $((NODES_COUNT - 1))); do
-    if [[ -z "$NO_RESET" ]]; then
-        echo "[Node 3] Resetting the database..."
-        rm -rf "$NODES_HOME/3/db"
-        mkdir -p "$NODES_HOME/3/db"
-        rm -rf "$NODES_HOME/3/wal"
-        mkdir -p "$NODES_HOME/3/wal"
-    fi
+# Create node directories and reset if needed
+if [[ $NO_RESET -eq 0 ]]; then
+    echo "[Node $NODE_ID] Resetting the database..."
+    rm -rf "$NODE_HOME/db"
+    mkdir -p "$NODE_HOME/db"
+    rm -rf "$NODE_HOME/wal"
+    mkdir -p "$NODE_HOME/wal"
+else
+    echo "[Node $NODE_ID] Preserving existing database..."
+    mkdir -p "$NODE_HOME/db"
+    mkdir -p "$NODE_HOME/wal"
+fi
 
-    rm -rf "$NODES_HOME/3/logs"
-    mkdir -p "$NODES_HOME/3/logs"
+# Clean and create logs and traces directories
+rm -rf "$NODE_HOME/logs"
+mkdir -p "$NODE_HOME/logs"
 
-    rm -rf "$NODES_HOME/3/traces"
-    mkdir -p "$NODES_HOME/3/traces"
-
-    echo "[Node 3] Spawning node..."
-    cargo run --bin $APP_BINARY -q -- start --home "$NODES_HOME/3" > "$NODES_HOME/3/logs/node.log" 2>&1 &
-    echo $! > "$NODES_HOME/3/node.pid"
-    echo "[Node 3] Logs are available at: $NODES_HOME/3/logs/node.log"
-#done
+rm -rf "$NODE_HOME/traces"
+mkdir -p "$NODE_HOME/traces"
 
 # Function to handle cleanup on interrupt
 function exit_and_cleanup {
-    echo "Stopping all nodes..."
-    for NODE in $(seq 0 $((NODES_COUNT - 1))); do
-        NODE_PID=$(cat "$NODES_HOME/$NODE/node.pid")
-        echo "[Node $NODE] Stopping node (PID: $NODE_PID)..."
-        kill "$NODE_PID"
-    done
+    if [ -f "$NODE_HOME/node.pid" ]; then
+        NODE_PID=$(cat "$NODE_HOME/node.pid")
+        echo "Stopping node $NODE_ID (PID: $NODE_PID)..."
+        kill "$NODE_PID" 2>/dev/null
+        rm -f "$NODE_HOME/node.pid"
+    fi
     exit 0
 }
 
 # Trap the INT signal (Ctrl+C) to run the cleanup function
 trap exit_and_cleanup INT
 
-echo "Spawned $NODES_COUNT nodes."
-echo "Press Ctrl+C to stop the nodes."
+echo "[Node $NODE_ID] Spawning node..."
+cargo run --bin $APP_BINARY -q -- start --home "$NODE_HOME" > "$NODE_HOME/logs/node.log" 2>&1 &
+NODE_PID=$!
+echo $NODE_PID > "$NODE_HOME/node.pid"
 
-# Keep the script running
-while true; do sleep 1; done
+echo "[Node $NODE_ID] Started with PID: $NODE_PID"
+echo "[Node $NODE_ID] Logs are available at: $NODE_HOME/logs/node.log"
+echo "[Node $NODE_ID] Home directory: $NODE_HOME"
+echo ""
+echo "Press Ctrl+C to stop the node."
 
+# Keep the script running and monitor the node
+while true; do
+    if ! kill -0 $NODE_PID 2>/dev/null; then
+        echo "[Node $NODE_ID] Node process has stopped unexpectedly!"
+        rm -f "$NODE_HOME/node.pid"
+        exit 1
+    fi
+    sleep 1
+done
