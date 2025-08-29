@@ -64,6 +64,7 @@ redb = "2.4.0"
 serde = "1.0"
 serde_json = "1.0"
 sha3 = "0.10"
+humantime-serde = "1.1"
 signature = "2.2.0"
 thiserror = { version = "2.0", default-features = false }
 tokio = "1.46.1"
@@ -75,71 +76,73 @@ url = "2"
 
 [workspace.dependencies.malachitebft-test]
 package = "informalsystems-malachitebft-test"
-path = "../malachite/code/crates/test"
+#path = "../malachite/code/crates/test"
+rev = "v0.5.0"
+git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-app]
 package = "informalsystems-malachitebft-app"
-path = "../malachite/code/crates/app"
-#rev = "v0.5.0"
-#git = "https://github.com/informalsystems/malachite.git"
+#path = "../malachite/code/crates/app"
+rev = "v0.5.0"
+git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-app-channel]
 package = "informalsystems-malachitebft-app-channel"
-path = "../malachite/code/crates/app-channel"
-#rev = "v0.5.0"
-#git = "https://github.com/informalsystems/malachite.git"
+#path = "../malachite/code/crates/app-channel"
+rev = "v0.5.0"
+git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-core-types]
 package = "informalsystems-malachitebft-core-types"
-path = "../malachite/code/crates/core-types"
-#rev = "v0.5.0"
-#git = "https://github.com/informalsystems/malachite.git"
+#path = "../malachite/code/crates/core-types"
+rev = "v0.5.0"
+git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-core-consensus]
 package = "informalsystems-malachitebft-core-consensus"
-path = "../malachite/code/crates/core-consensus"
-#rev = "v0.5.0"
-#git = "https://github.com/informalsystems/malachite.git"
+#path = "../malachite/code/crates/core-consensus"
+rev = "v0.5.0"
+git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-codec]
 package = "informalsystems-malachitebft-codec"
-path = "../malachite/code/crates/codec"
-#rev = "v0.5.0"
-#git = "https://github.com/informalsystems/malachite.git"
+#path = "../malachite/code/crates/codec"
+rev = "v0.5.0"
+git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-config]
 package = "informalsystems-malachitebft-config"
-path = "../malachite/code/crates/config"
-#rev = "v0.5.0"
-#git = "https://github.com/informalsystems/malachite.git"
+#path = "../malachite/code/crates/config"
+rev = "v0.5.0"
+git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-metrics]
 package = "informalsystems-malachitebft-metrics"
-path = "../malachite/code/crates/metrics"
-#rev = "v0.5.0"
-#git = "https://github.com/informalsystems/malachite.git"
+#path = "../malachite/code/crates/metrics"
+rev = "v0.5.0"
+git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-proto]
 package = "informalsystems-malachitebft-proto"
-path = "../malachite/code/crates/proto"
-#rev = "v0.5.0"
-#git = "https://github.com/informalsystems/malachite.git"
+#path = "../malachite/code/crates/proto"
+rev = "v0.5.0"
+git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-peer]
 package = "informalsystems-malachitebft-peer"
-path = "../malachite/code/crates/peer"
-#rev = "v0.5.0"
-#git = "https://github.com/informalsystems/malachite.git"
+#path = "../malachite/code/crates/peer"
+rev = "v0.5.0"
+git = "https://github.com/informalsystems/malachite.git"
 
 
 [workspace.dependencies.malachitebft-signing-ed25519]
 package = "informalsystems-malachitebft-signing-ed25519"
-path = "../malachite/code/crates/signing-ed25519"
-#rev = "v0.5.0"
-#git = "https://github.com/informalsystems/malachite.git"
+#path = "../malachite/code/crates/signing-ed25519"
+rev = "v0.5.0"
+git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-sync]
 package = "informalsystems-malachitebft-sync"
-path = "../malachite/code/crates/sync"
-#rev = "v0.5.0"
-#git = "https://github.com/informalsystems/malachite.git"
+#path = "../malachite/code/crates/sync"
+rev = "v0.5.0"
+git = "https://github.com/informalsystems/malachite.git"
