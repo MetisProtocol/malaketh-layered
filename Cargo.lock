@@ -3313,6 +3313,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "informalsystems-malachitebft-test"
+version = "0.5.0"
+source = "git+https://github.com/informalsystems/malachite.git?rev=v0.5.0#8a64f82061690b70e0522b71f32152295ccb0df5"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "ed25519-consensus",
+ "eyre",
+ "hex",
+ "informalsystems-malachitebft-app",
+ "informalsystems-malachitebft-codec",
+ "informalsystems-malachitebft-config",
+ "informalsystems-malachitebft-core-consensus",
+ "informalsystems-malachitebft-core-types",
+ "informalsystems-malachitebft-engine",
+ "informalsystems-malachitebft-peer",
+ "informalsystems-malachitebft-proto",
+ "informalsystems-malachitebft-signing-ed25519",
+ "informalsystems-malachitebft-sync",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "protox",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "sha3",
+ "signature",
+ "tokio",
+]
+
+[[package]]
 name = "informalsystems-malachitebft-wal"
 version = "0.5.0"
 source = "git+https://github.com/informalsystems/malachite.git?rev=v0.5.0#8a64f82061690b70e0522b71f32152295ccb0df5"
@@ -4068,6 +4101,7 @@ dependencies = [
  "informalsystems-malachitebft-app-channel",
  "informalsystems-malachitebft-config",
  "informalsystems-malachitebft-proto",
+ "informalsystems-malachitebft-test",
  "itertools 0.14.0",
  "malachitebft-eth-cli",
  "malachitebft-eth-engine",
