@@ -37,7 +37,7 @@ pub struct State {
     genesis: Genesis,
     signing_provider: Ed25519Provider,
     address: Address,
-    store: Store,
+    pub store: Store,
     stream_nonce: u32,
     streams_map: PartStreamsMap,
     #[allow(dead_code)]
@@ -114,6 +114,10 @@ impl State {
             chain_bytes: 0,
             start_time: Instant::now(),
         }
+    }
+
+    pub async fn set_current_height(&mut self, height: Height) {
+        self.current_height = height;
     }
 
     /// Returns the earliest height available in the state

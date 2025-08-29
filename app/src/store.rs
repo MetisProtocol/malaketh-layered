@@ -317,12 +317,12 @@ impl Db {
         Some(key.value())
     }
 
-    // fn max_decided_value_height(&self) -> Option<Height> {
-    //     let tx = self.db.begin_read().unwrap();
-    //     let table = tx.open_table(DECIDED_VALUES_TABLE).unwrap();
-    //     let (key, _) = table.last().ok()??;
-    //     Some(key.value())
-    // }
+    fn max_decided_value_height(&self) -> Option<Height> {
+        let tx = self.db.begin_read().unwrap();
+        let table = tx.open_table(DECIDED_VALUES_TABLE).unwrap();
+        let (key, _) = table.last().ok()??;
+        Some(key.value())
+    }
 
     fn create_tables(&self) -> Result<(), StoreError> {
         let tx = self.db.begin_write()?;
@@ -445,13 +445,13 @@ impl Store {
 
     /// Returns the maximum height of decided values in the store.
     /// Called by the application to determine the latest available height.
-    // pub async fn max_decided_value_height(&self) -> Option<Height> {
-    //     let db = Arc::clone(&self.db);
-    //     tokio::task::spawn_blocking(move || db.max_decided_value_height())
-    //         .await
-    //         .ok()
-    //         .flatten()
-    // }
+    pub async fn max_decided_value_height(&self) -> Option<Height> {
+        let db = Arc::clone(&self.db);
+        tokio::task::spawn_blocking(move || db.max_decided_value_height())
+            .await
+            .ok()
+            .flatten()
+    }
 
     /// Retrieves a decided value for the given height.
     /// Called by the application when a syncing peer is asking for a decided value.

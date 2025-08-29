@@ -16,7 +16,7 @@ use tokio::sync::mpsc::Receiver;
 use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::json_structures::ExecutionBlock;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
-use malachitebft_eth_types::{Block, BlockHash, TestContext};
+use malachitebft_eth_types::{Block, BlockHash, TestContext, Height};
 
 use crate::state::{decode_value, State};
 
@@ -37,6 +37,17 @@ pub async fn run(
                     // The first message to handle is the `ConsensusReady` message, signaling to the app
                     // that Malachite is ready to start consensus
                     AppMsg::ConsensusReady { reply } => {
+                        let start_height = state
+                            .store
+                            .max_decided_value_height()
+                            .await
+                            .map(|height| height.increment())
+                            .unwrap_or_else(|| Height::new(1));
+
+                        state.set_current_height(start_height).await;
+
+                        debug!("start_height: {:?}", start_height);
+
                         info!("🟢🟢 Consensus is ready");
 
                         // Node start-up: https://hackmd.io/@danielrachi/engine_api#Node-startup
@@ -235,7 +246,7 @@ pub async fn run(
                             .notify_new_block(execution_payload, versioned_hashes)
                             .await?;
                         // Simulated Execution Time
-                        // tokio::time::sleep(Duration::from_millis(500)).await;
+                        tokio::time::sleep(Duration::from_millis(500)).await;
                         if payload_status.status.is_invalid() {
                             return Err(eyre!("Invalid payload status: {}", payload_status.status));
                         }
