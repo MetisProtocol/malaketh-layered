@@ -47,7 +47,6 @@ pub struct State {
     pub current_round: Round,
     pub current_proposer: Option<Address>,
     // pub peers: HashSet<PeerId>,
-
     pub latest_block: Option<ExecutionBlock>,
     // Timestamp of the latest block in milliseconds
     pub latest_block_timestamp: u64,
@@ -106,7 +105,6 @@ impl State {
             streams_map: PartStreamsMap::new(),
             rng: StdRng::seed_from_u64(seed_from_address(&address)),
             // peers: HashSet::new(),
-
             latest_block: None,
             latest_block_timestamp: 0,
 
@@ -164,7 +162,7 @@ impl State {
         }
 
         // Re-assemble the proposal from its parts
-        let (value, data) = assemble_value_from_parts(parts);
+        let (value, data) = assemble_value_from_parts(parts.clone());
 
         // Log first 32 bytes of proposal data and total size
         if data.len() >= 32 {
@@ -178,19 +176,28 @@ impl State {
 
         // Store the proposal and its data
         self.store.store_undecided_proposal(value.clone()).await?;
-        self.store_undecided_proposal_data(data).await?;
+        self.store_undecided_proposal_data(parts.height, self.current_round, data)
+            .await?;
 
         Ok(Some(value))
     }
 
-    pub async fn store_undecided_proposal_data(&mut self, data: Bytes) -> eyre::Result<()> {
+    pub async fn store_undecided_proposal_data(
+        &mut self,
+        height: Height,
+        round: Round,
+        data: Bytes,
+    ) -> eyre::Result<()> {
         self.store
-            .store_undecided_block_data(self.current_height, self.current_round, data)
+            .store_undecided_block_data(height, round, data)
             .await
             .map_err(|e| eyre::Report::new(e))
     }
 
-    pub async fn store_undecided_proposal(&self, value: ProposedValue<TestContext>) -> Result<(), StoreError> {
+    pub async fn store_undecided_proposal(
+        &self,
+        value: ProposedValue<TestContext>,
+    ) -> Result<(), StoreError> {
         self.store.store_undecided_proposal(value).await
     }
 
@@ -263,7 +270,7 @@ impl State {
         }
 
         // Prune the store, keep the last 5 heights
-        let retain_height = Height::new(certificate.height.as_u64().saturating_sub(5));
+        let retain_height = Height::new(certificate.height.as_u64().saturating_sub(5000));
         self.store.prune(retain_height).await?;
 
         // Move to next height
@@ -414,7 +421,7 @@ impl State {
 
     /// Returns the set of validators.
     pub fn get_validator_set(&self, _height: Height) -> ValidatorSet {
-	    return self.genesis.validator_set.clone();
+        return self.genesis.validator_set.clone();
         // let num_validators = self.genesis.validator_set.len();
         // let selection_size = num_validators.div_ceil(2);
         //
