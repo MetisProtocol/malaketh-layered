@@ -37,15 +37,17 @@ pub async fn run(
                     // The first message to handle is the `ConsensusReady` message, signaling to the app
                     // that Malachite is ready to start consensus
                     AppMsg::ConsensusReady { reply } => {
-                        let start_height = state
+                        if state.current_height <= Height::default() {
+                            let start_height = state
                             .max_decided_value_height()
                             .await
                             .map(|height| height.increment())
                             .unwrap_or_else(|| Height::new(1));
 
-                        state.set_current_height(start_height).await;
+                            state.set_current_height(start_height).await;
+                        }
 
-                        info!("🟢🟢 Consensus is ready!!! start_height: {:?}", start_height);
+                        info!("🟢🟢 Consensus is ready!!! start_height: {:?}", state.current_height);
 
                         // Node start-up: https://hackmd.io/@danielrachi/engine_api#Node-startup
                         // Check compatibility with execution client
