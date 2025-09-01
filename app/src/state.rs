@@ -168,7 +168,7 @@ impl State {
         }
 
         // Re-assemble the proposal from its parts
-        let (value, data) = assemble_value_from_parts(parts);
+        let (value, data) = assemble_value_from_parts(parts.clone());
 
         // Log first 32 bytes of proposal data and total size
         if data.len() >= 32 {
@@ -182,14 +182,20 @@ impl State {
 
         // Store the proposal and its data
         self.store.store_undecided_proposal(value.clone()).await?;
-        self.store_undecided_proposal_data(data).await?;
+        self.store_undecided_proposal_data(parts.height, self.current_round, data)
+            .await?;
 
         Ok(Some(value))
     }
 
-    pub async fn store_undecided_proposal_data(&mut self, data: Bytes) -> eyre::Result<()> {
+    pub async fn store_undecided_proposal_data(
+        &mut self,
+        height: Height,
+        round: Round,
+        data: Bytes,
+    ) -> eyre::Result<()> {
         self.store
-            .store_undecided_block_data(self.current_height, self.current_round, data)
+            .store_undecided_block_data(height, round, data)
             .await
             .map_err(|e| eyre::Report::new(e))
     }
