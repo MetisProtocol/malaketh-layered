@@ -19,6 +19,7 @@ use malachitebft_eth_types::{
     ProposalPart, TestContext, ValidatorSet, Value,
 };
 
+use crate::app_config::PruneConfig;
 use crate::store::{DecidedValue, Store, StoreError};
 use crate::streaming::{PartStreamsMap, ProposalParts};
 
@@ -42,6 +43,9 @@ pub struct State {
     streams_map: PartStreamsMap,
     #[allow(dead_code)]
     rng: StdRng,
+
+    // Prune configuration
+    pub prune_config: PruneConfig,
 
     pub current_height: Height,
     pub current_round: Round,
@@ -91,6 +95,7 @@ impl State {
         address: Address,
         height: Height,
         store: Store,
+        prune_config: PruneConfig,
     ) -> Self {
         Self {
             genesis,
@@ -104,6 +109,7 @@ impl State {
             stream_nonce: 0,
             streams_map: PartStreamsMap::new(),
             rng: StdRng::seed_from_u64(seed_from_address(&address)),
+            prune_config,
             // peers: HashSet::new(),
             latest_block: None,
             latest_block_timestamp: 0,
@@ -269,9 +275,23 @@ impl State {
                 .await?;
         }
 
-        // Prune the store, keep the last 5 heights
-        let retain_height = Height::new(certificate.height.as_u64().saturating_sub(5000));
-        self.store.prune(retain_height).await?;
+        // Prune the store based on configuration
+        if self.prune_config.enabled {
+            let retain_height = Height::new(
+                certificate
+                    .height
+                    .as_u64()
+                    .saturating_sub(self.prune_config.retain_heights),
+            );
+            info!(
+                "Pruning store enabled, retaining {} heights (keeping data from height {} onwards)",
+                self.prune_config.retain_heights,
+                retain_height.as_u64()
+            );
+            self.store.prune(retain_height).await?;
+        } else {
+            debug!("Pruning is disabled, skipping prune operation");
+        }
 
         // Move to next height
         self.current_height = self.current_height.increment();
