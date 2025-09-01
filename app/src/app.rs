@@ -15,7 +15,7 @@ use malachitebft_app_channel::{AppMsg, Channels, NetworkMsg};
 use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::json_structures::ExecutionBlock;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
-use malachitebft_eth_types::{Block, BlockHash, TestContext};
+use malachitebft_eth_types::{Block, BlockHash, TestContext, Height};
 use tokio::sync::mpsc::Receiver;
 
 use crate::state::{decode_value, State};
@@ -37,7 +37,17 @@ pub async fn run(
                     // The first message to handle is the `ConsensusReady` message, signaling to the app
                     // that Malachite is ready to start consensus
                     AppMsg::ConsensusReady { reply } => {
-                        info!("🟢🟢 Consensus is ready");
+                        if state.current_height <= Height::default() {
+                            let start_height = state
+                            .max_decided_value_height()
+                            .await
+                            .map(|height| height.increment())
+                            .unwrap_or_else(|| Height::new(1));
+
+                            state.set_current_height(start_height).await;
+                        }
+
+                        info!("🟢🟢 Consensus is ready!!! start_height: {:?}", state.current_height);
 
                         // Node start-up: https://hackmd.io/@danielrachi/engine_api#Node-startup
                         // Check compatibility with execution client

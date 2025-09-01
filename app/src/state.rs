@@ -120,6 +120,15 @@ impl State {
         }
     }
 
+    /// sets the current height of the state
+    pub async fn set_current_height(&mut self, height: Height) {
+        self.current_height = height;
+    }
+
+    pub async fn max_decided_value_height(&self) -> Option<Height> {
+        self.store.max_decided_value_height().await
+    }
+
     /// Returns the earliest height available in the state
     pub async fn get_earliest_height(&self) -> Height {
         self.store

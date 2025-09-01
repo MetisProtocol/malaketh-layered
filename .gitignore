@@ -3,3 +3,4 @@
 /rethdata
 monitoring/data-grafana/
 monitoring/data-prometheus/
+.idea/
