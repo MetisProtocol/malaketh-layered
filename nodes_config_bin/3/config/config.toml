@@ -63,3 +63,7 @@ listen_addr = "127.0.0.1:29003"
 
 [runtime]
 flavor = "single_threaded"
+
+[prune]
+enabled = true
+retain_heights = 5000
