@@ -1,22 +1,22 @@
-use std::time::Duration;
 use bytes::Bytes;
 use color_eyre::eyre::{self, eyre};
 use ssz::{Decode, Encode};
+use std::time::Duration;
 use tracing::{debug, error, info};
 
 use alloy_rpc_types_engine::ExecutionPayloadV3;
+use malachitebft_app_channel::app::engine::host::Next;
 use malachitebft_app_channel::app::streaming::StreamContent;
 use malachitebft_app_channel::app::types::codec::Codec;
 use malachitebft_app_channel::app::types::core::{Round, Validity};
 use malachitebft_app_channel::app::types::sync::RawDecidedValue;
 use malachitebft_app_channel::app::types::{LocallyProposedValue, ProposedValue};
 use malachitebft_app_channel::{AppMsg, Channels, NetworkMsg};
-use malachitebft_app_channel::app::engine::host::Next;
-use tokio::sync::mpsc::Receiver;
 use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::json_structures::ExecutionBlock;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
 use malachitebft_eth_types::{Block, BlockHash, TestContext, Height};
+use tokio::sync::mpsc::Receiver;
 
 use crate::state::{decode_value, State};
 
@@ -116,7 +116,7 @@ pub async fn run(
 
                         // When the node is not the proposer, store the block data,
                         // which will be passed to the execution client (EL) on commit.
-                        state.store_undecided_proposal_data(bytes.clone()).await?;
+                        state.store_undecided_proposal_data(height, state.current_round, bytes.clone()).await?;
 
                         // Send it to consensus
                         if reply.send(proposal.clone()).is_err() {
@@ -306,7 +306,8 @@ pub async fn run(
                     } => {
                         info!(%height, %round, "🟢🟢 Processing synced value");
 
-                        if let Some(value) = decode_value(value_bytes){
+                        if let Some(value) = decode_value(value_bytes.clone()){
+                            let block_bytes = value.extensions.clone();
                             let proposed_value = ProposedValue {
                                 height,
                                 round,
@@ -316,6 +317,7 @@ pub async fn run(
                                 validity: Validity::Valid,
                             };
                             state.store_undecided_proposal(proposed_value.clone()).await?;
+                            state.store_undecided_proposal_data(height, round, block_bytes).await?;
 
                             // We send to consensus to see if it has been decided on
                             if reply.send(Some(proposed_value)).is_err() {
