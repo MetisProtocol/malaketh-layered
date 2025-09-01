@@ -4,6 +4,24 @@ use std::time::Duration;
 use malachitebft_config::*;
 use malachitebft_app_channel::app::node::NodeConfig;
 
+/// Prune configuration options
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PruneConfig {
+    /// Whether to enable automatic pruning of old data
+    pub enabled: bool,
+    /// Number of heights to retain (keep the last N heights)
+    pub retain_heights: u64,
+}
+
+impl Default for PruneConfig {
+    fn default() -> Self {
+        PruneConfig {
+            enabled: true,
+            retain_heights: 5000,
+        }
+    }
+}
+
 /// Extra Malachite configuration options
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EngineConfig {
@@ -65,6 +83,9 @@ pub struct Config {
 
     /// Runtime configuration options
     pub runtime: RuntimeConfig,
+
+    /// Prune configuration options
+    pub prune: PruneConfig,
 }
 
 impl NodeConfig for Config {

@@ -9,7 +9,8 @@ use color_eyre::eyre;
 use malachitebft_app_channel::app::events::{RxEvent, TxEvent};
 use malachitebft_app_channel::app::node::{
     CanGeneratePrivateKey, CanMakeConfig, CanMakeGenesis, CanMakePrivateKeyFile, EngineHandle,
-    MakeConfigSettings, Node, NodeHandle,};
+    MakeConfigSettings, Node, NodeHandle,
+};
 use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::engine_rpc::EngineRPC;
 use malachitebft_eth_engine::ethereum_rpc::EthereumRPC;
@@ -21,6 +22,10 @@ use malachitebft_app_channel::app::types::Keypair;
 
 // Use the same types used for integration tests.
 // A real application would use its own types and context instead.
+use crate::app_config::{load_config, Config};
+use crate::metrics::DbMetrics;
+use crate::state::State;
+use crate::store::Store;
 use malachitebft_eth_cli::metrics;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
 use malachitebft_eth_types::{
@@ -28,16 +33,12 @@ use malachitebft_eth_types::{
     ValidatorSet,
 };
 use tokio::{
-    task::JoinHandle,
     signal::unix::{signal, SignalKind},
     sync::mpsc,
+    task::JoinHandle,
 };
 use tracing::Instrument;
 use url::Url;
-use crate::app_config::{load_config, Config};
-use crate::metrics::DbMetrics;
-use crate::state::State;
-use crate::store::Store;
 
 /// Main application struct implementing the consensus node functionality
 #[derive(Clone)]
@@ -157,7 +158,17 @@ impl Node for App {
 
         let store = Store::open(self.get_home_dir().join("store.db"), metrics)?;
         let start_height = self.start_height.unwrap_or_default();
-        let mut state = State::new(genesis, ctx, signing_provider, address, start_height, store);
+
+        // Use prune configuration from config file
+        let mut state = State::new(
+            genesis,
+            ctx,
+            signing_provider,
+            address,
+            start_height,
+            store,
+            config.prune.clone(),
+        );
 
         let engine: Engine = {
             let engine_url: Url = {
@@ -177,7 +188,7 @@ impl Node for App {
             let jwt_path = PathBuf::from_str(config.engine.wt_path.as_str())?; // Should be the same secret used by the execution client.
             let eth_url: Url = {
                 let url = config.engine.eth_url.as_str();
-                if url.is_empty(){
+                if url.is_empty() {
                     let eth_port = match config.moniker.as_str() {
                         "test-0" => 8545,
                         "test-1" => 18545,
@@ -211,12 +222,21 @@ impl Node for App {
             Ok::<_, eyre::Error>(())
         });
 
-        let app_handle = tokio::spawn(async move {
-            if let Err(e) = crate::app::run(&mut state, &mut channels, engine, config.engine.block_interval, shutdown_rx).await {
-                tracing::error!(%e, "Application error");
+        let app_handle = tokio::spawn(
+            async move {
+                if let Err(e) = crate::app::run(
+                    &mut state,
+                    &mut channels,
+                    engine,
+                    config.engine.block_interval,
+                    shutdown_rx,
+                )
+                .await
+                {
+                    tracing::error!(%e, "Application error");
+                }
             }
-        }
-            .instrument(span)
+            .instrument(span),
         );
 
         Ok(Handle {
@@ -231,7 +251,6 @@ impl Node for App {
         handles.app.await.map_err(Into::into)
     }
 }
-
 
 impl CanMakeGenesis for App {
     fn make_genesis(&self, validators: Vec<(PublicKey, VotingPower)>) -> Self::Genesis {
@@ -265,7 +284,6 @@ impl CanMakeConfig for App {
         make_config(index, total, settings)
     }
 }
-
 
 /// Generate configuration for node "index" out of "total" number of nodes.
 fn make_config(index: usize, total: usize, settings: MakeConfigSettings) -> Config {
@@ -333,5 +351,6 @@ fn make_config(index: usize, total: usize, settings: MakeConfigSettings) -> Conf
         logging: LoggingConfig::default(),
         value_sync: ValueSyncConfig::default(),
         engine: Default::default(),
+        prune: Default::default(),
     }
 }
