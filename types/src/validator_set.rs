@@ -7,6 +7,20 @@ use serde::{Deserialize, Serialize};
 use crate::signing::PublicKey;
 use crate::{Address, TestContext};
 
+pub struct ValidatorSol {
+    pub public_key: String,
+    pub voting_power: u64,
+}
+
+impl ValidatorSol {
+    pub fn to_validator(&self) -> Validator {
+        Validator::new(
+            serde_json::from_str(&self.public_key).expect("Invalid public key"),
+            self.voting_power,
+        )
+    }
+}
+
 /// A validator is a public key and voting power
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Validator {

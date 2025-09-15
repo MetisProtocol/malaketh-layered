@@ -15,16 +15,23 @@ use malachitebft_app_channel::{AppMsg, Channels, NetworkMsg};
 use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::json_structures::ExecutionBlock;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
-use malachitebft_eth_types::{Block, BlockHash, TestContext, Height};
+use malachitebft_eth_types::{Block, BlockHash, TestContext, Height, ValidatorSet, ValidatorSol};
 use tokio::sync::mpsc::Receiver;
 
 use crate::state::{decode_value, State};
+use crate::sol::ValidatorContractClient as SolClient;
+
+pub async fn get_validator_set(sol_client: SolClient) -> ValidatorSet {
+    let validators: ValidatorSol = sol_client.get_validators_batch().await.expect("Failed to get batch");
+    return validators.into_iter().map(|v| v.to_validator()).collect();
+}
 
 pub async fn run(
     state: &mut State,
     channels: &mut Channels<TestContext>,
     engine: Engine,
     block_interval: Duration,
+    sol_client: SolClient,
     mut shutdown_rx: Receiver<()>,
 ) -> eyre::Result<()> {
     let mut shutdown_flag = false;

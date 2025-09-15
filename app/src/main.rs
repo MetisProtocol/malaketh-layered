@@ -19,6 +19,7 @@ mod state;
 mod store;
 mod streaming;
 mod app_config;
+mod sol;
 
 use node::App;
 

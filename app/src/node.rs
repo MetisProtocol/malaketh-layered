@@ -222,6 +222,12 @@ impl Node for App {
             Ok::<_, eyre::Error>(())
         });
 
+        let sol_client = crate::sol::ValidatorContractClient::new(
+            config.engine.eth_url.as_str(),
+            "", // private key not needed for read-only calls
+            Address::from_str(config.engine.validator_contract_address.as_str())?,
+        )?;
+
         let app_handle = tokio::spawn(
             async move {
                 if let Err(e) = crate::app::run(
@@ -229,6 +235,7 @@ impl Node for App {
                     &mut channels,
                     engine,
                     config.engine.block_interval,
+                    sol_client,
                     shutdown_rx,
                 )
                 .await
