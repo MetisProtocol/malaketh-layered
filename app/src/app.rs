@@ -21,8 +21,8 @@ use tokio::sync::mpsc::Receiver;
 use crate::state::{decode_value, State};
 use crate::sol::ValidatorContractClient as SolClient;
 
-pub async fn get_validator_set(sol_client: SolClient) -> ValidatorSet {
-    let validators: ValidatorSol = sol_client.get_validators_batch().await.expect("Failed to get batch");
+pub fn get_validator_set(sol_client: SolClient) -> ValidatorSet {
+    let validators: ValidatorSol = sol_client.get_validators_batch().expect("Failed to get batch");
     return validators.into_iter().map(|v| v.to_validator()).collect();
 }
 
@@ -68,7 +68,7 @@ pub async fn run(
                         // We can simply respond by telling the engine to start consensus
                         // at the current height, which is initially 1
                         if reply.send(
-                            (state.current_height, state.get_validator_set(state.current_height).clone())
+                            (state.current_height, get_validator_set(sol_client).clone())
                         ).is_err()
                         {
                             error!("Failed to send ConsensusReady reply");
@@ -177,7 +177,7 @@ pub async fn run(
                     // In our case, our validator set stays constant between heights so we can
                     // send back the validator set found in our genesis state.
                     AppMsg::GetValidatorSet { height, reply } => {
-                        if reply.send(Some(state.get_validator_set(height).clone())).is_err() {
+                        if reply.send(Some(get_validator_set(sol_client).clone())).is_err() {
                             error!("🔴 Failed to send GetValidatorSet reply");
                         }
                     }
@@ -290,7 +290,8 @@ pub async fn run(
                         if reply
                             .send(Next::Start(
                                 state.current_height,
-                                state.get_validator_set(state.current_height).clone(),
+                                // state.get_validator_set(state.current_height).clone(),
+                                get_validator_set(sol_client).clone(),
                             ))
                             .is_err()
                         {
