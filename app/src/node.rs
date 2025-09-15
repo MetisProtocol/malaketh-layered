@@ -222,11 +222,13 @@ impl Node for App {
             Ok::<_, eyre::Error>(())
         });
 
+        // 使用默认地址，因为配置中没有 validator_contract_address 字段
+        let default_address = alloy::primitives::address!("0x1234567890abcdef1234567890abcdef12345678");
         let sol_client = crate::sol::ValidatorContractClient::new(
             config.engine.eth_url.as_str(),
             "", // private key not needed for read-only calls
-            Address::from_str(config.engine.validator_contract_address.as_str())?,
-        )?;
+            default_address,
+        ).map_err(|e| eyre::eyre!("Failed to create sol client: {}", e))?;
 
         let app_handle = tokio::spawn(
             async move {

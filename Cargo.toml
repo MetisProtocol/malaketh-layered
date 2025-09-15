@@ -34,6 +34,7 @@ malachitebft-eth-cli    = { version = "0.0.1", path = "cli" }
 malachitebft-eth-engine = { version = "0.0.1", path = "engine" }
 malachitebft-eth-types  = { version = "0.0.1", path = "types" }
 
+alloy                  = { version = "0.11.1", default-features = false, features = ["sol-types", "signers", "providers", "network", "signer-local", "provider-http", "rpc-types"] }
 alloy-consensus        = { version = "0.11.1", default-features = false }
 alloy-rpc-types        = { version = "0.11.1", features = ["eth"], default-features = false }
 alloy-rpc-types-eth    = { version = "0.11.1", default-features = false }
