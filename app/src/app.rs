@@ -15,15 +15,16 @@ use malachitebft_app_channel::{AppMsg, Channels, NetworkMsg};
 use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::json_structures::ExecutionBlock;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
-use malachitebft_eth_types::{Block, BlockHash, TestContext, Height, ValidatorSet, ValidatorSol};
+use malachitebft_eth_types::{Block, BlockHash, TestContext, Height, Validator, ValidatorSet, ValidatorSol};
 use tokio::sync::mpsc::Receiver;
 
 use crate::state::{decode_value, State};
 use crate::sol::ValidatorContractClient as SolClient;
 
-pub fn get_validator_set(sol_client: SolClient) -> ValidatorSet {
-    let validators: ValidatorSol = sol_client.get_validators_batch().expect("Failed to get batch");
-    return validators.into_iter().map(|v| v.to_validator()).collect();
+pub async fn get_validator_set(sol_client: &SolClient) -> ValidatorSet {
+    let validators: Vec<ValidatorSol> = sol_client.get_validators_batch().await.expect("Failed to get batch");
+    let validators: Vec<Validator> = validators.into_iter().map(|v| v.to_validator()).collect();
+    return ValidatorSet::new(validators);
 }
 
 pub async fn run(
@@ -68,7 +69,7 @@ pub async fn run(
                         // We can simply respond by telling the engine to start consensus
                         // at the current height, which is initially 1
                         if reply.send(
-                            (state.current_height, get_validator_set(sol_client).clone())
+                            (state.current_height, get_validator_set(&sol_client).await.clone())
                         ).is_err()
                         {
                             error!("Failed to send ConsensusReady reply");
@@ -176,8 +177,8 @@ pub async fn run(
                     //
                     // In our case, our validator set stays constant between heights so we can
                     // send back the validator set found in our genesis state.
-                    AppMsg::GetValidatorSet { height, reply } => {
-                        if reply.send(Some(get_validator_set(sol_client).clone())).is_err() {
+                    AppMsg::GetValidatorSet { height: _height, reply } => {
+                        if reply.send(Some(get_validator_set(&sol_client).await.clone())).is_err() {
                             error!("🔴 Failed to send GetValidatorSet reply");
                         }
                     }
@@ -291,7 +292,7 @@ pub async fn run(
                             .send(Next::Start(
                                 state.current_height,
                                 // state.get_validator_set(state.current_height).clone(),
-                                get_validator_set(sol_client).clone(),
+                                get_validator_set(&sol_client).await.clone(),
                             ))
                             .is_err()
                         {

@@ -18,12 +18,13 @@ malachitebft-app-channel.workspace = true
 malachitebft-proto.workspace = true
 malachitebft-config.workspace = true
 
+alloy = { workspace = true }
 alloy-consensus = { workspace = true }
 alloy-rpc-types-eth = { workspace = true }
 alloy-rpc-types-engine = { workspace = true }
 ethereum_ssz = "0.8"
-alloy-sol-types = "0.4"
-alloy-primitives = "0.4"
+alloy-sol-types = "0.8"
+alloy-primitives = "0.8"
 
 eyre.workspace = true
 hex.workspace = true
