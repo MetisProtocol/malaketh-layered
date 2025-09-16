@@ -5,3 +5,58 @@ use serde::{Deserialize, Serialize};
 pub struct Genesis {
     pub validator_set: ValidatorSet,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const VALIDATOR_SET_JSON: &str = r#"
+    {
+        "validator_set": {
+            "validators": [
+            {
+                "address": "0x0754445aeda0441230d3ab099b0942181915186c",
+                "public_key": {
+                "type": "tendermint/PubKeyEd25519",
+                "value": "lwB6erO0yiT4uI5tzrdk/ov/gQv0X8Fu978JQfy9eic="
+                },
+                "voting_power": 1
+            },
+            {
+                "address": "0x3f8f2908b1b5b6ef3eec1968fcdf8340a6bec221",
+                "public_key": {
+                "type": "tendermint/PubKeyEd25519",
+                "value": "2sSy+F3l4EwwGgd7CCVvZZ3d82o5V4NhsZmd9WI3q44="
+                },
+                "voting_power": 1
+            },
+            {
+                "address": "0x9ab1a8b89460fccd8eb6739352300988915c71fe",
+                "public_key": {
+                "type": "tendermint/PubKeyEd25519",
+                "value": "G0lKW8Y0v6FAwfW492XHwCA6XTpziDVC7D3Q2q/DYVc="
+                },
+                "voting_power": 1
+            }
+            ]
+        }
+    }
+    "#;
+
+    #[test]
+    fn test_genesis() {
+        let genesis: Genesis = serde_json::from_str(VALIDATOR_SET_JSON).unwrap();
+        
+        assert_eq!(genesis.validator_set.validators.len(), 3);
+        assert_eq!(genesis.validator_set.validators[0].voting_power, 1);
+    }
+
+    #[test]
+    fn test_genesis_from_file() {
+        let genesis_str = std::fs::read_to_string("../nodes_config_bin/0/config/genesis.json").unwrap();
+        let genesis: Genesis = serde_json::from_str(&genesis_str).unwrap();
+
+        assert_eq!(genesis.validator_set.validators.len(), 3);
+        assert_eq!(genesis.validator_set.validators[0].voting_power, 1);
+    }
+}
