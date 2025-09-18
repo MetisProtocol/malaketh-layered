@@ -9,7 +9,59 @@ use alloy_rpc_types_txpool::{TxpoolInspect, TxpoolStatus};
 
 use crate::json_structures::*;
 
+/// Transaction receipt struct
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct TransactionReceipt {
+    pub transaction_hash: String,
+    pub transaction_index: String,
+    pub block_hash: String,
+    pub block_number: String,
+    pub from: String,
+    pub to: Option<String>,
+    pub cumulative_gas_used: String,
+    pub gas_used: String,
+    pub contract_address: Option<String>,
+    pub logs: Vec<Log>,
+    pub logs_bloom: String,
+    pub status: Option<String>,
+    pub effective_gas_price: Option<String>,
+}
+
+/// Log struct
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct Log {
+    pub address: String,
+    pub topics: Vec<String>,
+    pub data: String,
+    pub block_number: String,
+    pub transaction_hash: String,
+    pub transaction_index: String,
+    pub block_hash: String,
+    pub log_index: String,
+    pub removed: bool,
+}
+
+/// Transaction struct
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct Transaction {
+    pub hash: String,
+    pub nonce: String,
+    pub block_hash: Option<String>,
+    pub block_number: Option<String>,
+    pub transaction_index: Option<String>,
+    pub from: String,
+    pub to: Option<String>,
+    pub value: String,
+    pub gas: String,
+    pub gas_price: Option<String>,
+    pub input: String,
+    pub v: String,
+    pub r: String,
+    pub s: String,
+}
+
 /// RPC client for Ethereum server.
+#[derive(Clone)]
 pub struct EthereumRPC {
     client: Client,
     url: Url,
@@ -79,5 +131,57 @@ impl EthereumRPC {
     pub async fn txpool_inspect(&self) -> eyre::Result<TxpoolInspect> {
         self.rpc_request("txpool_inspect", json!([]), Duration::from_secs(1))
             .await
+    }
+
+    /// Call contract method (eth_call)
+    pub async fn call_contract(&self, address: malachitebft_eth_types::Address, data: Vec<u8>) -> eyre::Result<Vec<u8>> {
+        let params = json!([
+            {
+                "to": format!("0x{}", address),
+                "data": format!("0x{}", hex::encode(data))
+            },
+            "latest"
+        ]);
+        
+        let result: String = self.rpc_request("eth_call", params, Duration::from_secs(5)).await?;
+        
+        // Remove 0x prefix and decode hex
+        let hex_str = result.strip_prefix("0x").unwrap_or(&result);
+        hex::decode(hex_str).map_err(|e| eyre::eyre!("Failed to decode hex response: {}", e))
+    }
+
+    /// Send transaction (eth_sendTransaction)
+    pub async fn send_transaction(&self, tx: serde_json::Value) -> eyre::Result<serde_json::Value> {
+        let params = json!([tx]);
+        self.rpc_request("eth_sendTransaction", params, Duration::from_secs(10)).await
+    }
+
+    /// Get transaction receipt (eth_getTransactionReceipt)
+    pub async fn get_transaction_receipt(&self, tx_hash: &str) -> eyre::Result<Option<TransactionReceipt>> {
+        let params = json!([tx_hash]);
+        self.rpc_request("eth_getTransactionReceipt", params, Duration::from_secs(5)).await
+    }
+
+    /// Get transaction status (eth_getTransactionByHash)
+    pub async fn get_transaction_by_hash(&self, tx_hash: &str) -> eyre::Result<Option<Transaction>> {
+        let params = json!([tx_hash]);
+        self.rpc_request("eth_getTransactionByHash", params, Duration::from_secs(5)).await
+    }
+
+    /// Get account balance (eth_getBalance)
+    pub async fn get_balance(&self, address: malachitebft_eth_types::Address) -> eyre::Result<String> {
+        let params = json!([format!("0x{}", address), "latest"]);
+        self.rpc_request("eth_getBalance", params, Duration::from_secs(5)).await
+    }
+
+    /// Get gas price (eth_gasPrice)
+    pub async fn get_gas_price(&self) -> eyre::Result<String> {
+        self.rpc_request("eth_gasPrice", json!([]), Duration::from_secs(5)).await
+    }
+
+    /// Estimate gas (eth_estimateGas)
+    pub async fn estimate_gas(&self, tx: serde_json::Value) -> eyre::Result<String> {
+        let params = json!([tx]);
+        self.rpc_request("eth_estimateGas", params, Duration::from_secs(5)).await
     }
 }

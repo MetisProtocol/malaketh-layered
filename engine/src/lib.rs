@@ -3,3 +3,4 @@ pub mod engine;
 pub mod engine_rpc;
 pub mod ethereum_rpc;
 pub mod json_structures;
+pub mod validator_set_manager;

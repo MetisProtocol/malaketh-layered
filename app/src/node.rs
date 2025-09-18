@@ -224,12 +224,45 @@ impl Node for App {
 
         let app_handle = tokio::spawn(
             async move {
+                // Parse validator set contract address
+                let validator_set_contract_address = if config.engine.dynamic_validator_set.enabled
+                {
+                    config
+                        .engine
+                        .dynamic_validator_set
+                        .contract_address
+                        .as_ref()
+                        .and_then(|addr| {
+                            // Simplified address parsing, should use more robust parsing method in practice
+                            if addr.len() == 42 && addr.starts_with("0x") {
+                                let hex_str = &addr[2..];
+                                if hex_str.len() == 40 {
+                                    let mut bytes = [0u8; 20];
+                                    for (i, chunk) in hex_str.as_bytes().chunks(2).enumerate() {
+                                        if i < 20 && chunk.len() == 2 {
+                                            let hex_byte = std::str::from_utf8(chunk).ok()?;
+                                            bytes[i] = u8::from_str_radix(hex_byte, 16).ok()?;
+                                        }
+                                    }
+                                    Some(Address::new(bytes))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        })
+                } else {
+                    None
+                };
+
                 if let Err(e) = crate::app::run(
                     &mut state,
                     &mut channels,
                     engine,
                     config.engine.block_interval,
                     shutdown_rx,
+                    validator_set_contract_address,
                 )
                 .await
                 {

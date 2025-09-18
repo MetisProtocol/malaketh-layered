@@ -2,7 +2,7 @@ use bytes::Bytes;
 use color_eyre::eyre::{self, eyre};
 use ssz::{Decode, Encode};
 use std::time::Duration;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use alloy_rpc_types_engine::ExecutionPayloadV3;
 use malachitebft_app_channel::app::engine::host::Next;
@@ -15,10 +15,11 @@ use malachitebft_app_channel::{AppMsg, Channels, NetworkMsg};
 use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::json_structures::ExecutionBlock;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
-use malachitebft_eth_types::{Block, BlockHash, TestContext, Height};
+use malachitebft_eth_types::{Address, Block, BlockHash, Height, TestContext};
 use tokio::sync::mpsc::Receiver;
 
 use crate::state::{decode_value, State};
+use malachitebft_eth_engine::validator_set_manager::DynamicValidatorSetManager;
 
 pub async fn run(
     state: &mut State,
@@ -26,7 +27,26 @@ pub async fn run(
     engine: Engine,
     block_interval: Duration,
     mut shutdown_rx: Receiver<()>,
+    validator_set_contract_address: Option<Address>,
 ) -> eyre::Result<()> {
+    // Initialize dynamic validator set manager
+    let mut validator_set_manager = if let Some(contract_addr) = validator_set_contract_address {
+        info!(
+            "Initializing dynamic validator set manager with contract: {}",
+            contract_addr
+        );
+        let mut manager = DynamicValidatorSetManager::new(
+            engine.eth.clone(),
+            contract_addr,
+            Duration::from_secs(30), // 30 second update interval
+        ).with_genesis_validator_set(state.genesis.validator_set.clone());
+        manager.initialize().await?;
+        Some(manager)
+    } else {
+        info!("Using static validator set from genesis");
+        None
+    };
+
     let mut shutdown_flag = false;
     while !shutdown_flag {
         tokio::select! {
@@ -167,10 +187,43 @@ pub async fn run(
                     // than the one we are at (e.g. because we are lagging behind a little bit),
                     // the engine may ask us for the validator set at that height.
                     //
-                    // In our case, our validator set stays constant between heights so we can
-                    // send back the validator set found in our genesis state.
+                    // Check if we need to update validator set from contract
                     AppMsg::GetValidatorSet { height, reply } => {
-                        if reply.send(Some(state.get_validator_set(height).clone())).is_err() {
+                        let validator_set = if let Some(ref mut manager) = validator_set_manager {
+                            // Check if validator set needs to be updated
+                            if manager.should_update_validator_set(height.as_u64()).await {
+                                info!("Updating validator set at height {}", height);
+                                match manager.update_validator_set(height.as_u64()).await {
+                                    Ok(validators) => {
+                                        // Convert validators from contract to Malachite format
+                                        let mut converted_validators = Vec::new();
+                                        for validator in validators {
+                                            // Use real public key obtained from contract
+                                            converted_validators.push(
+                                                state.create_validator_from_contract_data(
+                                                    validator.address, 
+                                                    validator.voting_power,
+                                                    validator.public_key
+                                                )
+                                            );
+                                        }
+                                        state.update_validator_set(height, converted_validators.clone());
+                                        state.get_validator_set(height).clone()
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to update validator set from contract: {}, using cached set", e);
+                                        state.get_validator_set(height).clone()
+                                    }
+                                }
+                            } else {
+                                state.get_validator_set(height).clone()
+                            }
+                        } else {
+                            // Use static validator set
+                            state.get_validator_set(height).clone()
+                        };
+
+                        if reply.send(Some(validator_set)).is_err() {
                             error!("🔴 Failed to send GetValidatorSet reply");
                         }
                     }

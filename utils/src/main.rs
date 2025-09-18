@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::Result;
-use genesis::{generate_genesis, make_signers};
+use genesis::generate_genesis_with_contracts;
+use genesis::make_signers;
 use spammer::Spammer;
 
 mod genesis;
@@ -17,7 +18,11 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub(crate) enum Commands {
     /// Generate genesis file
-    Genesis,
+    Genesis {
+        /// Path to validator config file to read validator set from
+        #[clap(long)]
+        validator_config: String,
+    },
 
     /// Spam transactions
     #[command(arg_required_else_help = true)]
@@ -52,7 +57,7 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     match cli.command {
-        Commands::Genesis => generate_genesis(),
+        Commands::Genesis { validator_config } => generate_genesis_with_contracts(&validator_config),
         Commands::Spam(SpamCmd {
             rpc_url,
             num_txs,

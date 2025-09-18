@@ -85,6 +85,7 @@ pub struct EngineCapabilities {
 }
 
 // RPC client for connecting to Engine RPC endpoint with JWT authentication.
+#[derive(Clone)]
 pub struct EngineRPC {
     client: Client,
     url: Url,

@@ -7,6 +7,7 @@ use std::path::Path;
 const DEFAULT_ALGORITHM: Algorithm = Algorithm::HS256;
 
 /// Contains the JWT secret and claims parameters.
+#[derive(Clone)]
 pub struct Auth {
     key: EncodingKey,
 }
