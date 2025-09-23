@@ -105,7 +105,8 @@ pub async fn run(
                         // We need to ask the execution engine for a new value to
                         // propose. Then we send it back to consensus.
                         let latest_block = state.latest_block.expect("Head block hash is not set");
-                        let execution_payload = engine.generate_block(&latest_block).await?;
+                        let proposer = state.current_proposer.expect("Head block hash is not set");
+                        let execution_payload = engine.generate_block(&latest_block, proposer).await?;
                         debug!("🌈 Got execution payload: {:?}", execution_payload);
 
                         // Store block in state and propagate to peers.
