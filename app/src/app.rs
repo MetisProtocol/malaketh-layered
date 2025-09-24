@@ -441,3 +441,35 @@ pub async fn run(
     // We can do nothing but return an error here.
     Err(eyre!("Consensus channel closed unexpectedly"))
 }
+
+pub async fn update_validator_set(
+    manager: &mut DynamicValidatorSetManager,
+    state: &mut State,
+    height: Height,
+) -> eyre::Result<()> {
+    // Check if validator set needs to be updated
+    if manager.should_update_validator_set(height.as_u64()).await {
+        info!("Updating validator set at height {}", height);
+        match manager.update_validator_set(height.as_u64()).await {
+            Ok(validators) => {
+                // Convert validators from contract to Malachite format
+                let mut converted_validators = Vec::new();
+                for validator in validators {
+                    // Use real public key obtained from contract
+                    converted_validators.push(
+                        state.create_validator_from_contract_data(
+                            validator.address, 
+                            validator.voting_power,
+                            validator.public_key
+                        )
+                    );
+                }
+                state.update_validator_set(height, converted_validators);
+            }
+            Err(e) => {
+                warn!("Failed to update validator set from contract: {}, using cached set", e);
+            }
+        }
+    }
+    Ok(())
+}
