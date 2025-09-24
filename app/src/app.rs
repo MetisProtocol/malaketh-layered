@@ -80,8 +80,9 @@ pub async fn run(
 
                         // We can simply respond by telling the engine to start consensus
                         // at the current height, which is initially 1
+                        let epoch_length = validator_set_manager.as_ref().map(|m| m.get_epoch_length_value()).unwrap();
                         if reply.send(
-                            (state.current_height, state.get_validator_set(state.current_height).clone())
+                            (state.current_height, state.get_validator_set(state.current_height, epoch_length).clone())
                         ).is_err()
                         {
                             error!("Failed to send ConsensusReady reply");
@@ -189,40 +190,8 @@ pub async fn run(
                     //
                     // Check if we need to update validator set from contract
                     AppMsg::GetValidatorSet { height, reply } => {
-                        let validator_set = if let Some(ref mut manager) = validator_set_manager {
-                            // Check if validator set needs to be updated
-                            if manager.should_update_validator_set(height.as_u64()).await {
-                                info!("Updating validator set at height {}", height);
-                                match manager.update_validator_set(height.as_u64()).await {
-                                    Ok(validators) => {
-                                        // Convert validators from contract to Malachite format
-                                        let mut converted_validators = Vec::new();
-                                        for validator in validators {
-                                            // Use real public key obtained from contract
-                                            converted_validators.push(
-                                                state.create_validator_from_contract_data(
-                                                    validator.address, 
-                                                    validator.voting_power,
-                                                    validator.public_key
-                                                )
-                                            );
-                                        }
-                                        state.update_validator_set(height, converted_validators.clone());
-                                        state.get_validator_set(height).clone()
-                                    }
-                                    Err(e) => {
-                                        warn!("Failed to update validator set from contract: {}, using cached set", e);
-                                        state.get_validator_set(height).clone()
-                                    }
-                                }
-                            } else {
-                                state.get_validator_set(height).clone()
-                            }
-                        } else {
-                            // Use static validator set
-                            state.get_validator_set(height).clone()
-                        };
-
+                        let epoch_length = validator_set_manager.as_ref().map(|m| m.get_epoch_length_value()).unwrap();
+                        let validator_set = state.get_validator_set(height, epoch_length).clone();
                         if reply.send(Some(validator_set)).is_err() {
                             error!("🔴 Failed to send GetValidatorSet reply");
                         }
@@ -332,11 +301,16 @@ pub async fn run(
                             prev_randao: new_block_prev_randao,
                         });
 
+                        // Update validator set if needed
+                        if let Some(ref mut manager) = validator_set_manager {
+                            update_validator_set(manager, state, height).await?;
+                        };
+
                         // And then we instruct consensus to start the next height
                         if reply
                             .send(Next::Start(
                                 state.current_height,
-                                state.get_validator_set(state.current_height).clone(),
+                                state.get_latest_validator_set().clone(),
                             ))
                             .is_err()
                         {

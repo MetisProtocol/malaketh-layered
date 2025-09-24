@@ -453,11 +453,23 @@ impl State {
         parts
     }
 
+
+    /// Returns the latest validator set
+    pub fn get_latest_validator_set(&self) -> ValidatorSet {
+        self.genesis.validator_set.clone()
+    }
     /// Returns the set of validators for a given height.
     /// First checks dynamic validator sets, then falls back to genesis.
-    pub fn get_validator_set(&self, height: Height) -> ValidatorSet {
+    pub fn get_validator_set(&self, height: Height, epoch_lenght: u64) -> ValidatorSet {
         // Check if we have a dynamic validator set for this height
-        if let Some(validator_set) = self.dynamic_validator_sets.get(&height) {
+        // should get validator_set by height range(last_update_height ~ current_height)
+        // eg. epoch_lenght=100: 0~99 => height 0, 100~199 => height 100 ...
+        let store_height = if epoch_lenght == 0 {
+            height
+        } else {
+            Height::new((height.as_u64() / epoch_lenght) * epoch_lenght)
+        };
+        if let Some(validator_set) = self.dynamic_validator_sets.get(&store_height) {
             return validator_set.clone();
         }
 
@@ -472,12 +484,13 @@ impl State {
         validators: Vec<malachitebft_eth_types::Validator>,
     ) {
         let validator_set = ValidatorSet::new(validators);
-        self.dynamic_validator_sets.insert(height, validator_set);
+        self.dynamic_validator_sets.insert(height, validator_set.clone());
+        self.genesis.validator_set = validator_set;
     }
 
     /// Creates a validator from address and voting power
     /// This is a simplified implementation - in practice, you'd need to store/retrieve the public key
-    pub fn create_validator_from_address(
+    pub fn _create_validator_from_address(
         &self,
         address: Address,
         voting_power: VotingPower,
@@ -500,7 +513,7 @@ impl State {
     /// Creates a validator from contract data with real public key
     pub fn create_validator_from_contract_data(
         &self,
-        address: Address,
+        _address: Address,
         voting_power: VotingPower,
         public_key_bytes: [u8; 32],
     ) -> malachitebft_eth_types::Validator {
@@ -508,13 +521,6 @@ impl State {
         let public_key = PublicKey::from_bytes(public_key_bytes);
 
         malachitebft_eth_types::Validator::new(public_key, voting_power)
-    }
-
-    /// Cleans up old validator sets to prevent memory leaks
-    pub fn cleanup_old_validator_sets(&mut self, current_height: Height, retain_heights: u64) {
-        let cutoff_height = Height::new(current_height.as_u64().saturating_sub(retain_heights));
-        self.dynamic_validator_sets
-            .retain(|&height, _| height >= cutoff_height);
     }
 
     /// Verifies the signature of the proposal.
@@ -546,8 +552,9 @@ impl State {
         let signature = signature.ok_or(SignatureVerificationError::MissingFinPart)?;
 
         // Retrieve the public key of the proposer
+        // todo put epoch_length into state
         let public_key = self
-            .get_validator_set(self.current_height)
+            .get_validator_set(self.current_height, 100)
             .get_by_address(&parts.proposer)
             .map(|v| v.public_key);
 

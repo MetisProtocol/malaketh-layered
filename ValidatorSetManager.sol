@@ -35,6 +35,7 @@ contract ValidatorSetManager {
     address[] public activeValidators;
     uint256 public currentEpoch;
     uint256 public epochLength;
+    uint256 public updateHeight;
     uint256 public minStakeAmount;
     uint256 public totalStaked;
     address public admin;
@@ -96,6 +97,8 @@ contract ValidatorSetManager {
             validator.lastUpdateEpoch = currentEpoch;
         }
 
+        // todo setUpdateHeight
+
         totalStaked += msg.value;
         emit ValidatorUpdated(
             msg.sender,
@@ -122,6 +125,8 @@ contract ValidatorSetManager {
         if (validator.stakedAmount == 0) {
             _removeValidator(msg.sender);
         }
+
+        // todo setUpdateHeight
 
         payable(msg.sender).transfer(amount);
         emit ValidatorUpdated(
@@ -168,6 +173,8 @@ contract ValidatorSetManager {
         if (val.stakedAmount < minStakeAmount) {
             _removeValidator(validator);
         }
+
+        // todo setUpdateHeight
 
         emit Slash(validator, amount, reason);
     }
@@ -243,6 +250,10 @@ contract ValidatorSetManager {
         return epochLength;
     }
 
+    function getUpdateHeight() external view returns (uint256) {
+        return updateHeight;
+    }
+
     function getActiveValidatorCount() external view returns (uint256) {
         return activeValidators.length;
     }
@@ -292,6 +303,8 @@ contract ValidatorSetManager {
             publicKey: publicKey
         });
 
+        // todo setUpdateHeight
+
         activeValidators.push(validator);
         emit ValidatorAdded(validator, votingPower);
     }
@@ -311,6 +324,8 @@ contract ValidatorSetManager {
                 break;
             }
         }
+
+        // todo setUpdateHeight
 
         emit ValidatorRemoved(validator);
     }
