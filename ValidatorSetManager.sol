@@ -33,6 +33,7 @@ contract ValidatorSetManager {
     mapping(address => ValidatorInfo) public validators;
     mapping(uint256 => address[]) public epochValidators;
     address[] public activeValidators;
+    uint256 public validatorNum;
     uint256 public currentEpoch;
     uint256 public epochLength;
     uint256 public updateHeight;
@@ -67,6 +68,7 @@ contract ValidatorSetManager {
         epochLength = _epochLength;
         minStakeAmount = _minStakeAmount;
         currentEpoch = 0;
+        validatorNum = 21;
 
         require(
             initialValidators.length == initialPowers.length &&
@@ -246,6 +248,10 @@ contract ValidatorSetManager {
         return validators[validator];
     }
 
+    function getValidatorNum() external view returns (uint256) {
+        return validatorNum;
+    }
+
     function getEpochLength() external view returns (uint256) {
         return epochLength;
     }
@@ -270,6 +276,11 @@ contract ValidatorSetManager {
 
     function setMinStakeAmount(uint256 newAmount) external onlyAdmin {
         minStakeAmount = newAmount;
+    }
+
+    function setValidatorNum(uint256 newValidatorNum) external onlyAdmin {
+        require(newValidatorNum > 0, "Invalid validator number");
+        validatorNum = newValidatorNum;
     }
 
     // Proxy pattern implementation
