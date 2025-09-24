@@ -67,6 +67,7 @@ impl Engine {
     pub async fn generate_block(
         &self,
         latest_block: &ExecutionBlock,
+        proposer: Address,
     ) -> eyre::Result<ExecutionPayloadV3> {
         debug!("🟠 generate_block on top of {:?}", latest_block);
 
@@ -83,9 +84,8 @@ impl Engine {
             // The mix_hash field in the generated block will be equal to prev_randao.
             // TODO: generate value according to spec.
             prev_randao: latest_block.prev_randao,
-
-            // TODO: provide proper address.
-            suggested_fee_recipient: Address::repeat_byte(42).to_alloy_address(),
+            
+            suggested_fee_recipient: proposer.to_alloy_address(),
 
             // Cannot be None in V3.
             withdrawals: Some(vec![]),
