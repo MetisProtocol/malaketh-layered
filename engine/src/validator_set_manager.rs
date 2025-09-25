@@ -1,14 +1,13 @@
-use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::{engine_rpc::EngineRPC, ethereum_rpc::EthereumRPC};
+use crate::{ethereum_rpc::EthereumRPC};
 use alloy_sol_types::{sol, SolCall};
 use base64::Engine;
 use color_eyre::eyre::{eyre, Result};
 use malachitebft_core_types::VotingPower;
-use malachitebft_eth_types::{Address, PublicKey};
+use malachitebft_eth_types::{Address};
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, warn};
+use tracing::{info, warn, debug};
 
 sol! {
     contract ValidatorSetManager {
@@ -37,7 +36,7 @@ sol! {
             uint256 lastUpdateEpoch;
             uint256 totalRewards;
             uint256 slashCount;
-            bytes32 publicKey;
+            string publicKey;
         }
 
         // State variables
@@ -97,7 +96,9 @@ sol! {
             address validator
         ) external view returns (ValidatorInfo memory);
 
+        function getValidatorNum() external view returns (uint256);
         function getEpochLength() external view returns (uint256);
+        function getUpdateHeight() external view returns (uint256);
         function getActiveValidatorCount() external view returns (uint256);
         function getTotalStaked() external view returns (uint256);
 
@@ -113,7 +114,8 @@ sol! {
         function _addValidator(
             address validator,
             uint256 votingPower,
-            uint256 stakedAmount
+            uint256 stakedAmount,
+            bytes32 publicKey
         ) internal;
 
         function _removeValidator(address validator) internal;
@@ -128,7 +130,6 @@ pub struct ValidatorInfo {
     pub voting_power: VotingPower,
     pub staked_amount: u64,
     pub is_active: bool,
-    pub last_update_epoch: u64,
     pub total_rewards: u64,
     pub slash_count: u64,
     pub public_key: [u8; 32],
@@ -138,24 +139,20 @@ pub struct ValidatorInfo {
 pub struct DynamicValidatorSetManager {
     eth_rpc: EthereumRPC,
     contract_address: Address,
-    current_epoch: u64,
     epoch_length: u64,
     last_update_height: u64,
-    validator_cache: HashMap<Address, ValidatorInfo>,
-    update_interval: Duration,
+    // update_interval: Duration,
     genesis_validator_set: Option<malachitebft_eth_types::ValidatorSet>,
 }
 
 impl DynamicValidatorSetManager {
-    pub fn new(eth_rpc: EthereumRPC, contract_address: Address, update_interval: Duration) -> Self {
+    pub fn new(eth_rpc: EthereumRPC, contract_address: Address, _update_interval: Duration) -> Self {
         Self {
             eth_rpc,
             contract_address,
-            current_epoch: 0,
             epoch_length: 100, // Default 100 blocks per epoch
             last_update_height: 0,
-            validator_cache: HashMap::new(),
-            update_interval,
+            // update_interval,
             genesis_validator_set: None,
         }
     }
@@ -189,35 +186,6 @@ impl DynamicValidatorSetManager {
             }
         }
 
-        // Get current validator set from contract
-        match self.fetch_validator_set_from_contract().await {
-            Ok(validators) => {
-                info!("Fetched {} validators from contract", validators.len());
-                for validator in validators {
-                    self.validator_cache.insert(validator.address, validator);
-                }
-            }
-            Err(e) => {
-                warn!(
-                    "Failed to fetch validator set from contract: {}, using genesis validators",
-                    e
-                );
-                // Fallback to genesis validators
-                match self.get_genesis_validators() {
-                    Ok(genesis_validators) => {
-                        for validator in genesis_validators {
-                            self.validator_cache.insert(validator.address, validator);
-                        }
-                    }
-                    Err(e) => {
-                        error!("Failed to load genesis validators: {}", e);
-                        // If even genesis validators fail to load, use empty validator set
-                    }
-                }
-            }
-        }
-
-        info!("Initialized with {} validators", self.validator_cache.len());
         Ok(())
     }
 
@@ -225,6 +193,20 @@ impl DynamicValidatorSetManager {
     pub async fn should_update_validator_set(&self, current_height: u64) -> bool {
         // Check if epoch boundary is reached
         if current_height % self.epoch_length == 0 && current_height > self.last_update_height {
+            match self.fetch_update_height_from_contract().await {
+                Ok(height) => {
+                    // validator_set in state has been updated with contract value
+                    if self.last_update_height > height && height != 0 {
+                        debug!("Contract update height {} is less than last update height {}, skipping update", height, self.last_update_height);
+                        return false;
+                    }
+                },
+                Err(e) => {
+                    warn!("Failed to fetch update height from contract: {}", e);
+                    return false;
+                }
+            };
+
             return true;
         }
 
@@ -239,151 +221,67 @@ impl DynamicValidatorSetManager {
     ) -> Result<Vec<ValidatorInfo>> {
         info!("Updating validator set at height {}", current_height);
 
-        // Check if contract epoch update needs to be triggered
-        if current_height % self.epoch_length == 0 {
-            info!("Epoch boundary reached, triggering contract update");
-            self.trigger_contract_epoch_update().await?;
-        }
-
         // Get latest validator set from contract
-        let validators = self.fetch_validator_set_from_contract().await?;
-
-        // Update cache
-        self.validator_cache.clear();
-        for validator in &validators {
-            self.validator_cache
-                .insert(validator.address, validator.clone());
-        }
+        let mut validators = self.fetch_validator_set_from_contract().await?;
+        let validator_num = self.fetch_validator_num_from_contract().await? as usize;
+        validators.sort_by(|a, b| {
+            // sort by voting_power, from high to low
+            b.voting_power.cmp(&a.voting_power)
+        });
+        validators.truncate(validator_num);
 
         self.last_update_height = current_height;
-        self.current_epoch = current_height / self.epoch_length;
 
         info!(
-            "Updated validator set: {} validators, epoch {}",
+            "Updated validator set: {} validators",
             validators.len(),
-            self.current_epoch
         );
 
         Ok(validators)
     }
 
-    /// Get genesis validators
-    /// Get validator information from the provided genesis validator set
-    fn get_genesis_validators(&self) -> Result<Vec<ValidatorInfo>> {
-        if let Some(ref genesis_validator_set) = self.genesis_validator_set {
-            let validators =
-                self.convert_genesis_validators_to_validator_info(genesis_validator_set);
-            if !validators.is_empty() {
-                info!(
-                    "Loaded {} genesis validators from provided genesis validator set",
-                    validators.len()
-                );
-                return Ok(validators);
-            }
+    /// Get validator number from contract
+    pub async fn fetch_validator_num_from_contract(&self) -> Result<u64> {
+        let call = ValidatorSetManager::getValidatorNumCall {};
+        let call_data = call.abi_encode();
+
+        let result = self
+            .eth_rpc
+            .call_contract(self.contract_address, call_data)
+            .await
+            .map_err(|e| eyre!("Failed to call contract: {}", e))?;
+
+        // Check if result is empty
+        if result.is_empty() {
+            return Err(eyre!("Empty contract response"));
         }
 
-        // If no genesis validator set provided, return error
-        Err(eyre!("No genesis validator set provided"))
+        let decoded = ValidatorSetManager::getValidatorNumCall::abi_decode_returns(&result)
+            .map_err(|e| eyre!("Failed to decode contract response: {}", e))?;
+
+        Ok(decoded.to::<u64>())
     }
 
-    /// Convert genesis validator set to ValidatorInfo
-    fn convert_genesis_validators_to_validator_info(
-        &self,
-        genesis_validator_set: &malachitebft_eth_types::ValidatorSet,
-    ) -> Vec<ValidatorInfo> {
-        genesis_validator_set
-            .validators
-            .iter()
-            .map(|validator| {
-                ValidatorInfo {
-                    address: validator.address,
-                    voting_power: validator.voting_power,
-                    staked_amount: 1000000000000000000, // 1 ETH - default stake amount
-                    is_active: true,
-                    last_update_epoch: 0,
-                    total_rewards: 0,
-                    slash_count: 0,
-                    public_key: *validator.public_key.as_bytes(),
-                }
-            })
-            .collect()
-    }
+    /// Get update height from contract
+    async fn fetch_update_height_from_contract(&self) -> Result<u64> {
+        let call = ValidatorSetManager::getUpdateHeightCall {};
+        let call_data = call.abi_encode();
 
-    /// Trigger epoch update in contract
-    async fn trigger_contract_epoch_update(&self) -> Result<()> {
-        info!("Triggering contract epoch update");
+        let result = self
+            .eth_rpc
+            .call_contract(self.contract_address, call_data)
+            .await
+            .map_err(|e| eyre!("Failed to call contract: {}", e))?;
 
-        // Construct updateValidatorSet call
-        let update_call = ValidatorSetManager::updateValidatorSetCall {};
-        let call_data = update_call.abi_encode();
-
-        // Send transaction through Engine API
-        match self.send_contract_transaction(call_data).await {
-            Ok(tx_hash) => {
-                info!("Contract epoch update transaction sent: {:?}", tx_hash);
-
-                // Wait for transaction confirmation
-                if let Err(e) = self.wait_for_transaction_confirmation(tx_hash).await {
-                    warn!("Failed to wait for transaction confirmation: {}", e);
-                }
-            }
-            Err(e) => {
-                error!("Failed to send contract epoch update transaction: {}", e);
-                return Err(e);
-            }
+        // Check if result is empty
+        if result.is_empty() {
+            return Err(eyre!("Empty contract response"));
         }
 
-        Ok(())
-    }
+        let decoded = ValidatorSetManager::getUpdateHeightCall::abi_decode_returns(&result)
+            .map_err(|e| eyre!("Failed to decode contract response: {}", e))?;
 
-    /// Get cached validator information
-    pub fn get_cached_validator(&self, address: &Address) -> Option<&ValidatorInfo> {
-        self.validator_cache.get(address)
-    }
-
-    /// Get all cached validators
-    pub fn get_cached_validators(&self) -> Vec<ValidatorInfo> {
-        self.validator_cache.values().cloned().collect()
-    }
-
-    /// Get current epoch
-    pub fn get_current_epoch(&self) -> u64 {
-        self.current_epoch
-    }
-
-    /// Get epoch length
-    pub fn get_epoch_length_value(&self) -> u64 {
-        self.epoch_length
-    }
-
-    /// Check if validator is active
-    pub fn is_validator_active(&self, address: &Address) -> bool {
-        self.validator_cache
-            .get(address)
-            .map(|v| v.is_active)
-            .unwrap_or(false)
-    }
-
-    /// Get validator voting power
-    pub fn get_validator_voting_power(&self, address: &Address) -> VotingPower {
-        self.validator_cache
-            .get(address)
-            .map(|v| v.voting_power)
-            .unwrap_or(0)
-    }
-
-    /// Get total voting power
-    pub fn get_total_voting_power(&self) -> VotingPower {
-        self.validator_cache.values().map(|v| v.voting_power).sum()
-    }
-
-    /// Clean up expired validator cache
-    pub fn cleanup_expired_validators(&mut self, current_epoch: u64) {
-        let expired_epochs = 10; // Keep data for the last 10 epochs
-        let cutoff_epoch = current_epoch.saturating_sub(expired_epochs);
-
-        self.validator_cache
-            .retain(|_, validator| validator.last_update_epoch >= cutoff_epoch);
+        Ok(decoded.to::<u64>())
     }
 
     /// Get epoch length from contract
@@ -435,7 +333,6 @@ impl DynamicValidatorSetManager {
                 voting_power: decoded._1[i].to::<u64>(),
                 staked_amount: 0, // Needs separate query
                 is_active: true,  // Needs separate query
-                last_update_epoch: self.current_epoch,
                 total_rewards: 0, // Needs separate query
                 slash_count: 0,   // Needs separate query
                 public_key: decoded._2[i].into(),
@@ -462,8 +359,13 @@ impl DynamicValidatorSetManager {
         Ok(validators)
     }
 
+    /// Get epoch length
+    pub fn get_epoch_length_value(&self) -> u64 {
+        self.epoch_length
+    }
+
     /// Send contract transaction
-    async fn send_contract_transaction(&self, call_data: Vec<u8>) -> Result<[u8; 32]> {
+    async fn _send_contract_transaction(&self, call_data: Vec<u8>) -> Result<[u8; 32]> {
         // Get gas price
         let gas_price = self
             .eth_rpc
@@ -502,7 +404,7 @@ impl DynamicValidatorSetManager {
     }
 
     /// Wait for transaction confirmation
-    async fn wait_for_transaction_confirmation(&self, tx_hash: [u8; 32]) -> Result<()> {
+    async fn _wait_for_transaction_confirmation(&self, tx_hash: [u8; 32]) -> Result<()> {
         let tx_hash_hex = format!("0x{}", hex::encode(tx_hash));
 
         // Poll transaction status, wait up to 30 seconds

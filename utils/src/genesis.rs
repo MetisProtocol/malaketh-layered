@@ -55,11 +55,11 @@ const MIN_STAKE: u64 = 1000000000000000000; // 1 ETH in wei
 /// 5: uint256 activeValidatorCount (3)
 /// 6+: mappings and arrays and other variables
 const INITIALIZED_SLOT: u8 = 0; // bool public initialized;
-const EPOCH_LENGTH_SLOT: u8 = 1; // uint256 public epochLength;
-const MIN_STAKE_AMOUNT_SLOT: u8 = 2; // uint256 public minStakeAmount;
-const MAX_VALIDATORS_SLOT: u8 = 3; // uint256 public maxValidators;
-const GENESIS_VALIDATOR_COUNT_SLOT: u8 = 4; // uint256 public genesisValidatorCount;
-const ACTIVE_VALIDATOR_COUNT_SLOT: u8 = 5; // uint256 public activeValidatorCount;
+const _EPOCH_LENGTH_SLOT: u8 = 1; // uint256 public epochLength;
+const _MIN_STAKE_AMOUNT_SLOT: u8 = 2; // uint256 public minStakeAmount;
+const _MAX_VALIDATORS_SLOT: u8 = 3; // uint256 public maxValidators;
+const _GENESIS_VALIDATOR_COUNT_SLOT: u8 = 4; // uint256 public genesisValidatorCount;
+const _ACTIVE_VALIDATOR_COUNT_SLOT: u8 = 5; // uint256 public activeValidatorCount;
 
 /// Create a signer from a mnemonic.
 pub(crate) fn make_signer(mnemonic: &str) -> LocalSigner<SigningKey> {
@@ -427,7 +427,7 @@ pub(crate) fn generate_genesis_with_contracts(validator_config_path: &str) -> Re
     Ok(())
 }
 
-pub(crate) fn generate_genesis() -> Result<()> {
+pub(crate) fn _generate_genesis() -> Result<()> {
     let genesis_file = "./assets/genesis.json";
 
     // Create signers and get their addresses

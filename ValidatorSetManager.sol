@@ -33,8 +33,10 @@ contract ValidatorSetManager {
     mapping(address => ValidatorInfo) public validators;
     mapping(uint256 => address[]) public epochValidators;
     address[] public activeValidators;
+    uint256 public validatorNum;
     uint256 public currentEpoch;
     uint256 public epochLength;
+    uint256 public updateHeight;
     uint256 public minStakeAmount;
     uint256 public totalStaked;
     address public admin;
@@ -66,6 +68,7 @@ contract ValidatorSetManager {
         epochLength = _epochLength;
         minStakeAmount = _minStakeAmount;
         currentEpoch = 0;
+        validatorNum = 21;
 
         require(
             initialValidators.length == initialPowers.length &&
@@ -95,6 +98,8 @@ contract ValidatorSetManager {
             validator.votingPower = validator.stakedAmount;
             validator.lastUpdateEpoch = currentEpoch;
         }
+
+        // todo setUpdateHeight
 
         totalStaked += msg.value;
         emit ValidatorUpdated(
@@ -142,6 +147,8 @@ contract ValidatorSetManager {
             _removeValidator(msg.sender);
         }
 
+        // todo setUpdateHeight
+
         payable(msg.sender).transfer(amount);
         emit ValidatorUpdated(
             msg.sender,
@@ -187,6 +194,8 @@ contract ValidatorSetManager {
         if (val.stakedAmount < minStakeAmount) {
             _removeValidator(validator);
         }
+
+        // todo setUpdateHeight
 
         emit Slash(validator, amount, reason);
     }
@@ -258,8 +267,16 @@ contract ValidatorSetManager {
         return validators[validator];
     }
 
+    function getValidatorNum() external view returns (uint256) {
+        return validatorNum;
+    }
+
     function getEpochLength() external view returns (uint256) {
         return epochLength;
+    }
+
+    function getUpdateHeight() external view returns (uint256) {
+        return updateHeight;
     }
 
     function getActiveValidatorCount() external view returns (uint256) {
@@ -278,6 +295,11 @@ contract ValidatorSetManager {
 
     function setMinStakeAmount(uint256 newAmount) external onlyAdmin {
         minStakeAmount = newAmount;
+    }
+
+    function setValidatorNum(uint256 newValidatorNum) external onlyAdmin {
+        require(newValidatorNum > 0, "Invalid validator number");
+        validatorNum = newValidatorNum;
     }
 
     // Proxy pattern implementation
@@ -311,6 +333,8 @@ contract ValidatorSetManager {
             publicKey: publicKey
         });
 
+        // todo setUpdateHeight
+
         activeValidators.push(validator);
         emit ValidatorAdded(validator, votingPower);
     }
@@ -330,6 +354,8 @@ contract ValidatorSetManager {
                 break;
             }
         }
+
+        // todo setUpdateHeight
 
         emit ValidatorRemoved(validator);
     }
