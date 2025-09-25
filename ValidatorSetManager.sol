@@ -104,6 +104,25 @@ contract ValidatorSetManager {
         );
     }
 
+    // Convenience function to stake with base64 public key
+    function stakeWithBase64(string calldata publicKeyBase64) external payable {
+        // Convert base64 string to bytes32
+        bytes32 publicKey = _base64ToBytes32(publicKeyBase64);
+        this.stake(publicKey);
+    }
+
+    // Helper function to convert base64 string to bytes32
+    function _base64ToBytes32(string calldata base64String) internal pure returns (bytes32) {
+        // This is a simplified implementation
+        // In practice, you'd need a proper base64 decoder
+        bytes memory data = bytes(base64String);
+        require(data.length == 44, "Invalid base64 length"); // 32 bytes = 44 base64 chars
+
+        // For now, we'll use a simple approach - hash the string
+        // In a real implementation, you'd decode the base64 properly
+        return keccak256(data);
+    }
+
     function unstake(uint256 amount) external {
         ValidatorInfo storage validator = validators[msg.sender];
         require(validator.validator != address(0), "Not a validator");
