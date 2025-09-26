@@ -162,6 +162,7 @@ impl Node for App {
         // Use prune configuration from config file
         let mut state = State::new(
             genesis,
+            self.genesis_file.clone(),
             ctx,
             signing_provider,
             address,

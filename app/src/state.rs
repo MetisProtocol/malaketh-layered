@@ -1,5 +1,6 @@
 //! Internal state of the application. This is a simplified abstract to keep it simple.
 //! A regular application would have mempool implemented, a proper database and input methods like RPC.
+use std::path::PathBuf;
 use bytes::Bytes;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -37,6 +38,7 @@ pub struct State {
     #[allow(dead_code)]
     ctx: TestContext,
     pub genesis: Genesis,
+    genesis_file: PathBuf,
     signing_provider: Ed25519Provider,
     address: Address,
     store: Store,
@@ -94,6 +96,7 @@ impl State {
     /// Creates a new State instance with the given validator address and starting height
     pub fn new(
         genesis: Genesis,
+        genesis_file: PathBuf,
         ctx: TestContext,
         signing_provider: Ed25519Provider,
         address: Address,
@@ -103,6 +106,7 @@ impl State {
     ) -> Self {
         Self {
             genesis,
+            genesis_file,
             ctx,
             signing_provider,
             current_height: height,
@@ -453,6 +457,12 @@ impl State {
         parts
     }
 
+    /// get validator set from file
+    pub fn get_validator_set_from_file(&self) -> ValidatorSet {
+        let genesis_str = std::fs::read_to_string(&self.genesis_file).unwrap();
+        let genesis: Genesis = serde_json::from_str(&genesis_str).unwrap();
+        genesis.validator_set
+    }
 
     /// Returns the latest validator set
     pub fn get_latest_validator_set(&self) -> ValidatorSet {
@@ -473,8 +483,10 @@ impl State {
             return validator_set.clone();
         }
 
+        self.get_validator_set_from_file()
+        
         // Fall back to genesis validator set
-        self.genesis.validator_set.clone()
+        // self.genesis.validator_set.clone()
     }
 
     /// Updates the validator set for a specific height

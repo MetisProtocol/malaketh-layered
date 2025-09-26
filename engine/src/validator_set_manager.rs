@@ -7,7 +7,7 @@ use color_eyre::eyre::{eyre, Result};
 use malachitebft_core_types::VotingPower;
 use malachitebft_eth_types::{Address};
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn, debug};
+use tracing::{info, warn};
 
 sol! {
     contract ValidatorSetManager {
@@ -193,19 +193,19 @@ impl DynamicValidatorSetManager {
     pub async fn should_update_validator_set(&self, current_height: u64) -> bool {
         // Check if epoch boundary is reached
         if current_height % self.epoch_length == 0 && current_height > self.last_update_height {
-            match self.fetch_update_height_from_contract().await {
-                Ok(height) => {
-                    // validator_set in state has been updated with contract value
-                    if self.last_update_height > height && height != 0 {
-                        debug!("Contract update height {} is less than last update height {}, skipping update", height, self.last_update_height);
-                        return false;
-                    }
-                },
-                Err(e) => {
-                    warn!("Failed to fetch update height from contract: {}", e);
-                    return false;
-                }
-            };
+            // match self.fetch_update_height_from_contract().await {
+            //     Ok(height) => {
+            //         // validator_set in state has been updated with contract value
+            //         if self.last_update_height > height && height != 0 {
+            //             debug!("Contract update height {} is less than last update height {}, skipping update", height, self.last_update_height);
+            //             return false;
+            //         }
+            //     },
+            //     Err(e) => {
+            //         warn!("Failed to fetch update height from contract: {}", e);
+            //         return false;
+            //     }
+            // };
 
             return true;
         }
@@ -263,7 +263,7 @@ impl DynamicValidatorSetManager {
     }
 
     /// Get update height from contract
-    async fn fetch_update_height_from_contract(&self) -> Result<u64> {
+    async fn _fetch_update_height_from_contract(&self) -> Result<u64> {
         let call = ValidatorSetManager::getUpdateHeightCall {};
         let call_data = call.abi_encode();
 
