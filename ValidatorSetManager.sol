@@ -1,17 +1,10 @@
+// SPDX-License-Identifier: MIT
 pragma solidity >=0.8.2 <0.9.0;
 
 contract ValidatorSetManager {
     // Event definitions
     event ValidatorAdded(address indexed validator, uint256 votingPower);
     event ValidatorRemoved(address indexed validator);
-    event ValidatorUpdated(
-        address indexed validator,
-        uint256 oldPower,
-        uint256 newPower
-    );
-    event EpochUpdated(uint256 indexed epoch, address[] validators);
-    event Slash(address indexed validator, uint256 amount, string reason);
-    event FeeDistributed(address indexed validator, uint256 amount);
     event ProxyUpgraded(
         address indexed oldImplementation,
         address indexed newImplementation
@@ -21,11 +14,6 @@ contract ValidatorSetManager {
     struct ValidatorInfo {
         address validator;
         uint256 votingPower;
-        uint256 stakedAmount;
-        bool isActive;
-        uint256 lastUpdateEpoch;
-        uint256 totalRewards;
-        uint256 slashCount;
         bytes32 publicKey; // Add public key field
     }
 
@@ -34,16 +22,43 @@ contract ValidatorSetManager {
     mapping(uint256 => address[]) public epochValidators;
     address[] public activeValidators;
     uint256 public validatorNum;
-    uint256 public currentEpoch;
     uint256 public epochLength;
     uint256 public updateHeight;
-    uint256 public minStakeAmount;
-    uint256 public totalStaked;
     address public admin;
     address public implementation;
     address public proxyAdmin;
 
-    // Modifiers
+    constructor() {
+        _addDefaultValidator(
+            0x0754445aedA0441230D3ab099B0942181915186C,
+            0x97007a7ab3b4ca24f8b88e6dceb764fe8bff810bf45fc16ef7bf0941fcbd7a27, // lwB6erO0yiT4uI5tzrdk/ov/gQv0X8Fu978JQfy9eic=
+            1
+        );
+        
+        _addDefaultValidator(
+            0x3f8F2908B1B5B6Ef3eEC1968fCdF8340A6beC221,
+            0xdac4b2f85de5e04c301a077b08256f659dddf36a39578361b1999df56237ab8e, // 2sSy+F3l4EwwGgd7CCVvZZ3d82o5V4NhsZmd9WI3q44=
+            1
+        );
+
+        _addDefaultValidator(
+            0x9Ab1A8B89460fCcd8Eb6739352300988915c71fe,
+            0x1b494a5bc634bfa140c1f5b8f765c7c0203a5d3a73883542ec3dd0daafc36157, // G0lKW8Y0v6FAwfW492XHwCA6XTpziDVC7D3Q2q/DYVc=
+            1
+        );
+        validatorNum = 10;
+        epochLength = 100;
+    }
+
+    function _addDefaultValidator(
+        address validator, 
+        bytes32 publicKey, 
+        uint256 votingPower
+    ) private {
+        _addValidator(validator, votingPower, publicKey);
+    }
+
+    // // Modifiers
     modifier onlyAdmin() {
         require(msg.sender == admin, "Only admin");
         _;
@@ -54,20 +69,17 @@ contract ValidatorSetManager {
         _;
     }
 
-    // Initialization functions
+    // // Initialization functions
     function initialize(
         address[] calldata initialValidators,
         uint256[] calldata initialPowers,
         bytes32[] calldata initialPublicKeys,
-        uint256 _epochLength,
-        uint256 _minStakeAmount
+        uint256 _epochLength
     ) external {
         require(admin == address(0), "Already initialized");
         admin = msg.sender;
         proxyAdmin = msg.sender;
         epochLength = _epochLength;
-        minStakeAmount = _minStakeAmount;
-        currentEpoch = 0;
         validatorNum = 21;
 
         require(
@@ -78,169 +90,12 @@ contract ValidatorSetManager {
         require(initialValidators.length >= 3, "Need at least 3 validators");
 
         for (uint256 i = 0; i < initialValidators.length; i++) {
-            _addValidator(initialValidators[i], initialPowers[i], 0, initialPublicKeys[i]);
-        }
-
-        _updateEpochValidators();
-    }
-
-    // Staking functions
-    function stake(bytes32 publicKey) external payable {
-        require(msg.value >= minStakeAmount, "Insufficient stake amount");
-
-        ValidatorInfo storage validator = validators[msg.sender];
-        if (validator.validator == address(0)) {
-            // New validator
-            _addValidator(msg.sender, msg.value, msg.value, publicKey);
-        } else {
-            // Existing validator increases stake
-            validator.stakedAmount += msg.value;
-            validator.votingPower = validator.stakedAmount;
-            validator.lastUpdateEpoch = currentEpoch;
-        }
-
-        // todo setUpdateHeight
-
-        totalStaked += msg.value;
-        emit ValidatorUpdated(
-            msg.sender,
-            validator.votingPower - msg.value,
-            validator.votingPower
-        );
-    }
-
-    // Convenience function to stake with base64 public key
-    function stakeWithBase64(string calldata publicKeyBase64) external payable {
-        // Convert base64 string to bytes32
-        bytes32 publicKey = _base64ToBytes32(publicKeyBase64);
-        this.stake(publicKey);
-    }
-
-    // Helper function to convert base64 string to bytes32
-    function _base64ToBytes32(string calldata base64String) internal pure returns (bytes32) {
-        // This is a simplified implementation
-        // In practice, you'd need a proper base64 decoder
-        bytes memory data = bytes(base64String);
-        require(data.length == 44, "Invalid base64 length"); // 32 bytes = 44 base64 chars
-
-        // For now, we'll use a simple approach - hash the string
-        // In a real implementation, you'd decode the base64 properly
-        return keccak256(data);
-    }
-
-    function unstake(uint256 amount) external {
-        ValidatorInfo storage validator = validators[msg.sender];
-        require(validator.validator != address(0), "Not a validator");
-        require(amount <= validator.stakedAmount, "Insufficient staked amount");
-        require(
-            validator.stakedAmount - amount >= minStakeAmount ||
-                amount == validator.stakedAmount,
-            "Below minimum stake"
-        );
-
-        validator.stakedAmount -= amount;
-        validator.votingPower = validator.stakedAmount;
-        validator.lastUpdateEpoch = currentEpoch;
-        totalStaked -= amount;
-
-        if (validator.stakedAmount == 0) {
-            _removeValidator(msg.sender);
-        }
-
-        // todo setUpdateHeight
-
-        payable(msg.sender).transfer(amount);
-        emit ValidatorUpdated(
-            msg.sender,
-            validator.votingPower + amount,
-            validator.votingPower
-        );
-    }
-
-    // Validator Set management
-    function updateValidatorSet() external {
-        require(block.number % epochLength == 0, "Not epoch end");
-
-        currentEpoch++;
-        _updateEpochValidators();
-
-        // Clean up inactive validators
-        for (uint256 i = activeValidators.length; i > 0; i--) {
-            address validator = activeValidators[i - 1];
-            if (validators[validator].stakedAmount < minStakeAmount) {
-                _removeValidator(validator);
-            }
-        }
-
-        emit EpochUpdated(currentEpoch, activeValidators);
-    }
-
-    // Slashing mechanism
-    function slashValidator(
-        address validator,
-        uint256 amount,
-        string calldata reason
-    ) external onlyAdmin {
-        ValidatorInfo storage val = validators[validator];
-        require(val.validator != address(0), "Validator not found");
-        require(amount <= val.stakedAmount, "Slash amount too large");
-
-        val.stakedAmount -= amount;
-        val.votingPower = val.stakedAmount;
-        val.slashCount++;
-        val.lastUpdateEpoch = currentEpoch;
-        totalStaked -= amount;
-
-        if (val.stakedAmount < minStakeAmount) {
-            _removeValidator(validator);
-        }
-
-        // todo setUpdateHeight
-
-        emit Slash(validator, amount, reason);
-    }
-
-    // Fee distribution
-    function distributeFees() external payable {
-        require(msg.value > 0, "No fees to distribute");
-        require(activeValidators.length > 0, "No active validators");
-
-        uint256 feePerValidator = msg.value / activeValidators.length;
-        uint256 remainder = msg.value % activeValidators.length;
-
-        for (uint256 i = 0; i < activeValidators.length; i++) {
-            address validator = activeValidators[i];
-            uint256 amount = feePerValidator;
-            if (i == activeValidators.length - 1) {
-                amount += remainder; // Give remainder to last validator
-            }
-
-            validators[validator].totalRewards += amount;
-            payable(validator).transfer(amount);
-            emit FeeDistributed(validator, amount);
+            _addValidator(initialValidators[i], initialPowers[i], initialPublicKeys[i]);
         }
     }
 
-    // Query functions
-    function getCurrentValidatorSet()
-        external
-        view
-        returns (address[] memory, uint256[] memory)
-    {
-        address[] memory validators_list = new address[](
-            activeValidators.length
-        );
-        uint256[] memory powers = new uint256[](activeValidators.length);
-
-        for (uint256 i = 0; i < activeValidators.length; i++) {
-            validators_list[i] = activeValidators[i];
-            powers[i] = validators[activeValidators[i]].votingPower;
-        }
-
-        return (validators_list, powers);
-    }
-
-    // Get validator set with public keys
+    // // Query functions
+    // // Get validator set with public keys
     function getCurrentValidatorSetWithKeys()
         external
         view
@@ -271,6 +126,10 @@ contract ValidatorSetManager {
         return validatorNum;
     }
 
+    function getValidatorCount() external view returns (uint256) {
+        return activeValidators.length;
+    }
+
     function getEpochLength() external view returns (uint256) {
         return epochLength;
     }
@@ -279,22 +138,10 @@ contract ValidatorSetManager {
         return updateHeight;
     }
 
-    function getActiveValidatorCount() external view returns (uint256) {
-        return activeValidators.length;
-    }
-
-    function getTotalStaked() external view returns (uint256) {
-        return totalStaked;
-    }
-
     // Management functions
     function setEpochLength(uint256 newLength) external onlyAdmin {
         require(newLength > 0, "Invalid epoch length");
         epochLength = newLength;
-    }
-
-    function setMinStakeAmount(uint256 newAmount) external onlyAdmin {
-        minStakeAmount = newAmount;
     }
 
     function setValidatorNum(uint256 newValidatorNum) external onlyAdmin {
@@ -302,7 +149,7 @@ contract ValidatorSetManager {
         validatorNum = newValidatorNum;
     }
 
-    // Proxy pattern implementation
+    // // Proxy pattern implementation
     function upgradeTo(address newImplementation) external onlyProxyAdmin {
         require(newImplementation != address(0), "Invalid implementation");
         address oldImplementation = implementation;
@@ -315,21 +162,26 @@ contract ValidatorSetManager {
         proxyAdmin = newAdmin;
     }
 
-    // Internal functions
+    function AddValidator(
+        address validator,
+        uint256 votingPower,
+        bytes32 publicKey
+    ) external {
+        _addValidator(validator, votingPower, publicKey);
+    }
+
+    function RemoveValidator(address validator) external {
+        _removeValidator(validator);
+    }
+    
     function _addValidator(
         address validator,
         uint256 votingPower,
-        uint256 stakedAmount,
         bytes32 publicKey
     ) internal {
         validators[validator] = ValidatorInfo({
             validator: validator,
             votingPower: votingPower,
-            stakedAmount: stakedAmount,
-            isActive: true,
-            lastUpdateEpoch: currentEpoch,
-            totalRewards: 0,
-            slashCount: 0,
             publicKey: publicKey
         });
 
@@ -340,10 +192,6 @@ contract ValidatorSetManager {
     }
 
     function _removeValidator(address validator) internal {
-        ValidatorInfo storage val = validators[validator];
-        val.isActive = false;
-        val.lastUpdateEpoch = currentEpoch;
-
         // Remove from activeValidators array
         for (uint256 i = 0; i < activeValidators.length; i++) {
             if (activeValidators[i] == validator) {
@@ -358,9 +206,5 @@ contract ValidatorSetManager {
         // todo setUpdateHeight
 
         emit ValidatorRemoved(validator);
-    }
-
-    function _updateEpochValidators() internal {
-        epochValidators[currentEpoch] = activeValidators;
     }
 }

@@ -7,49 +7,15 @@ use color_eyre::eyre::{eyre, Result};
 use malachitebft_core_types::VotingPower;
 use malachitebft_eth_types::{Address};
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::{info, warn, debug};
 
 sol! {
     contract ValidatorSetManager {
-        // Event definitions
-        event ValidatorAdded(address indexed validator, uint256 votingPower);
-        event ValidatorRemoved(address indexed validator);
-        event ValidatorUpdated(
-            address indexed validator,
-            uint256 oldPower,
-            uint256 newPower
-        );
-        event EpochUpdated(uint256 indexed epoch, address[] validators);
-        event Slash(address indexed validator, uint256 amount, string reason);
-        event FeeDistributed(address indexed validator, uint256 amount);
-        event ProxyUpgraded(
-            address indexed oldImplementation,
-            address indexed newImplementation
-        );
-
-        // Struct definitions
         struct ValidatorInfo {
             address validator;
             uint256 votingPower;
-            uint256 stakedAmount;
-            bool isActive;
-            uint256 lastUpdateEpoch;
-            uint256 totalRewards;
-            uint256 slashCount;
-            string publicKey;
+            bytes32 publicKey;
         }
-
-        // State variables
-        mapping(address => ValidatorInfo) public validators;
-        mapping(uint256 => address[]) public epochValidators;
-        address[] public activeValidators;
-        uint256 public currentEpoch;
-        uint256 public epochLength;
-        uint256 public minStakeAmount;
-        uint256 public totalStaked;
-        address public admin;
-        address public implementation;
-        address public proxyAdmin;
 
         // Modifiers
         modifier onlyAdmin();
@@ -61,32 +27,9 @@ sol! {
             uint256[] calldata initialPowers,
             bytes32[] calldata initialPublicKeys,
             uint256 _epochLength,
-            uint256 _minStakeAmount
         ) external;
-
-        // Staking functions
-        function stake(bytes32 publicKey) external payable;
-        function unstake(uint256 amount) external;
-
-        // Validator Set management
-        function updateValidatorSet() external;
-
-        // Slashing mechanism
-        function slashValidator(
-            address validator,
-            uint256 amount,
-            string calldata reason
-        ) external;
-
-        // Fee distribution
-        function distributeFees() external payable;
 
         // Query functions
-        function getCurrentValidatorSet()
-            external
-            view
-            returns (address[] memory, uint256[] memory);
-
         function getCurrentValidatorSetWithKeys()
             external
             view
@@ -99,27 +42,29 @@ sol! {
         function getValidatorNum() external view returns (uint256);
         function getEpochLength() external view returns (uint256);
         function getUpdateHeight() external view returns (uint256);
-        function getActiveValidatorCount() external view returns (uint256);
-        function getTotalStaked() external view returns (uint256);
+        function getValidatorCount() external view returns (uint256);
 
         // Management functions
         function setEpochLength(uint256 newLength) external;
-        function setMinStakeAmount(uint256 newAmount) external;
+        function setValidatorNum(uint256 newValidatorNum) external;
 
         // Proxy pattern implementation
         function upgradeTo(address newImplementation) external;
         function setProxyAdmin(address newAdmin) external;
-
+        function AddValidatorBase64(
+            address validator,
+            uint256 votingPower,
+            string calldata publicKey
+        ) external;
         // Internal functions
+        function _base64ToBytes32(string memory base64String) internal pure returns (bytes32);
         function _addValidator(
             address validator,
             uint256 votingPower,
-            uint256 stakedAmount,
             bytes32 publicKey
         ) internal;
 
         function _removeValidator(address validator) internal;
-        function _updateEpochValidators() internal;
     }
 }
 
@@ -128,10 +73,6 @@ sol! {
 pub struct ValidatorInfo {
     pub address: Address,
     pub voting_power: VotingPower,
-    pub staked_amount: u64,
-    pub is_active: bool,
-    pub total_rewards: u64,
-    pub slash_count: u64,
     pub public_key: [u8; 32],
 }
 
@@ -191,6 +132,14 @@ impl DynamicValidatorSetManager {
 
     /// Check if validator set needs to be updated
     pub async fn should_update_validator_set(&self, current_height: u64) -> bool {
+        let validator_count = self.fetch_validator_count_from_contract().await.unwrap_or(0);
+        if validator_count == 0 {
+            warn!("Validator contract not avalilable or returned zero validators");
+            return false;
+        }
+        let validator_num = self.fetch_validator_num_from_contract().await.unwrap();
+        debug!("Judge update validator set! current_height:{}, epoch_len:{}, val_num:{}, val_count:{}", 
+                            current_height, self.epoch_length, validator_num, validator_count);
         // Check if epoch boundary is reached
         if current_height % self.epoch_length == 0 && current_height > self.last_update_height {
             // match self.fetch_update_height_from_contract().await {
@@ -257,6 +206,28 @@ impl DynamicValidatorSetManager {
         }
 
         let decoded = ValidatorSetManager::getValidatorNumCall::abi_decode_returns(&result)
+            .map_err(|e| eyre!("Failed to decode contract response: {}", e))?;
+
+        Ok(decoded.to::<u64>())
+    }
+
+    /// Get validator count from contract
+    pub async fn fetch_validator_count_from_contract(&self) -> Result<u64> {
+        let call = ValidatorSetManager::getValidatorCountCall {};
+        let call_data = call.abi_encode();
+
+        let result = self
+            .eth_rpc
+            .call_contract(self.contract_address, call_data)
+            .await
+            .map_err(|e| eyre!("Failed to call contract: {}", e))?;
+
+        // Check if result is empty
+        if result.is_empty() {
+            return Err(eyre!("Empty contract response"));
+        }
+
+        let decoded = ValidatorSetManager::getValidatorCountCall::abi_decode_returns(&result)
             .map_err(|e| eyre!("Failed to decode contract response: {}", e))?;
 
         Ok(decoded.to::<u64>())
@@ -331,10 +302,6 @@ impl DynamicValidatorSetManager {
             let validator = ValidatorInfo {
                 address: Address::new(decoded._0[i].into()),
                 voting_power: decoded._1[i].to::<u64>(),
-                staked_amount: 0, // Needs separate query
-                is_active: true,  // Needs separate query
-                total_rewards: 0, // Needs separate query
-                slash_count: 0,   // Needs separate query
                 public_key: decoded._2[i].into(),
             };
 

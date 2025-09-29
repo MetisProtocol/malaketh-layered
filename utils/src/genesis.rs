@@ -342,6 +342,13 @@ pub(crate) fn generate_genesis_with_contracts(validator_config_path: &str) -> Re
             },
         );
     }
+    alloc.insert(
+        Address::from_str("0x52732ef09590c920a8AA5161FE224e21fC85fD26").unwrap(),
+        GenesisAccount {
+            balance: U256::from_str("15000000000000000000000").unwrap(), // 15000 ETH
+            ..Default::default()
+        },
+    );
 
     // Create validator storage
     let validator_storage = create_validator_storage(validator_config_path)?;
