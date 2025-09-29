@@ -31,30 +31,31 @@ contract ValidatorSetManager {
     constructor() {
         _addDefaultValidator(
             0x0754445aedA0441230D3ab099B0942181915186C,
-            "lwB6erO0yiT4uI5tzrdk/ov/gQv0X8Fu978JQfy9eic=",
+            0x97007a7ab3b4ca24f8b88e6dceb764fe8bff810bf45fc16ef7bf0941fcbd7a27, // lwB6erO0yiT4uI5tzrdk/ov/gQv0X8Fu978JQfy9eic=
             1
         );
         
         _addDefaultValidator(
             0x3f8F2908B1B5B6Ef3eEC1968fCdF8340A6beC221,
-            "2sSy+F3l4EwwGgd7CCVvZZ3d82o5V4NhsZmd9WI3q44=",
+            0xdac4b2f85de5e04c301a077b08256f659dddf36a39578361b1999df56237ab8e, // 2sSy+F3l4EwwGgd7CCVvZZ3d82o5V4NhsZmd9WI3q44=
             1
         );
 
         _addDefaultValidator(
             0x9Ab1A8B89460fCcd8Eb6739352300988915c71fe,
-            "G0lKW8Y0v6FAwfW492XHwCA6XTpziDVC7D3Q2q/DYVc=",
+            0x1b494a5bc634bfa140c1f5b8f765c7c0203a5d3a73883542ec3dd0daafc36157, // G0lKW8Y0v6FAwfW492XHwCA6XTpziDVC7D3Q2q/DYVc=
             1
         );
+        validatorNum = 3;
+        epochLength = 100;
     }
 
     function _addDefaultValidator(
         address validator, 
-        string memory publicKey, 
+        bytes32 publicKey, 
         uint256 votingPower
     ) private {
-        bytes32 publicKeyBytes = _base64ToBytes32(publicKey);
-        _addValidator(validator, votingPower, publicKeyBytes);
+        _addValidator(validator, votingPower, publicKey);
     }
 
     // // Modifiers
@@ -161,26 +162,16 @@ contract ValidatorSetManager {
         proxyAdmin = newAdmin;
     }
 
-    function AddValidatorBase64(
+    function AddValidator(
         address validator,
         uint256 votingPower,
-        string calldata publicKey
+        bytes32 publicKey
     ) external {
-        bytes32 publicKeyBytes = _base64ToBytes32(publicKey);
-        _addValidator(validator, votingPower, publicKeyBytes);
+        _addValidator(validator, votingPower, publicKey);
     }
 
-    // Internal functions
-    // Helper function to convert base64 string to bytes32
-    function _base64ToBytes32(string memory base64String) internal pure returns (bytes32) {
-        // This is a simplified implementation
-        // In practice, you'd need a proper base64 decoder
-        bytes memory data = bytes(base64String);
-        require(data.length == 44, "Invalid base64 length"); // 32 bytes = 44 base64 chars
-
-        // For now, we'll use a simple approach - hash the string
-        // In a real implementation, you'd decode the base64 properly
-        return keccak256(data);
+    function RemoveValidator(address validator) external {
+        _removeValidator(validator);
     }
     
     function _addValidator(
