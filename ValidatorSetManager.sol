@@ -46,7 +46,7 @@ contract ValidatorSetManager {
             0x1b494a5bc634bfa140c1f5b8f765c7c0203a5d3a73883542ec3dd0daafc36157, // G0lKW8Y0v6FAwfW492XHwCA6XTpziDVC7D3Q2q/DYVc=
             1
         );
-        validatorNum = 3;
+        validatorNum = 10;
         epochLength = 100;
     }
 
