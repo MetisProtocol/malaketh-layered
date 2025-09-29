@@ -11,45 +11,11 @@ use tracing::{info, warn};
 
 sol! {
     contract ValidatorSetManager {
-        // Event definitions
-        event ValidatorAdded(address indexed validator, uint256 votingPower);
-        event ValidatorRemoved(address indexed validator);
-        event ValidatorUpdated(
-            address indexed validator,
-            uint256 oldPower,
-            uint256 newPower
-        );
-        event EpochUpdated(uint256 indexed epoch, address[] validators);
-        event Slash(address indexed validator, uint256 amount, string reason);
-        event FeeDistributed(address indexed validator, uint256 amount);
-        event ProxyUpgraded(
-            address indexed oldImplementation,
-            address indexed newImplementation
-        );
-
-        // Struct definitions
         struct ValidatorInfo {
             address validator;
             uint256 votingPower;
-            uint256 stakedAmount;
-            bool isActive;
-            uint256 lastUpdateEpoch;
-            uint256 totalRewards;
-            uint256 slashCount;
-            string publicKey;
+            bytes32 publicKey;
         }
-
-        // State variables
-        mapping(address => ValidatorInfo) public validators;
-        mapping(uint256 => address[]) public epochValidators;
-        address[] public activeValidators;
-        uint256 public currentEpoch;
-        uint256 public epochLength;
-        uint256 public minStakeAmount;
-        uint256 public totalStaked;
-        address public admin;
-        address public implementation;
-        address public proxyAdmin;
 
         // Modifiers
         modifier onlyAdmin();
@@ -61,32 +27,9 @@ sol! {
             uint256[] calldata initialPowers,
             bytes32[] calldata initialPublicKeys,
             uint256 _epochLength,
-            uint256 _minStakeAmount
         ) external;
-
-        // Staking functions
-        function stake(bytes32 publicKey) external payable;
-        function unstake(uint256 amount) external;
-
-        // Validator Set management
-        function updateValidatorSet() external;
-
-        // Slashing mechanism
-        function slashValidator(
-            address validator,
-            uint256 amount,
-            string calldata reason
-        ) external;
-
-        // Fee distribution
-        function distributeFees() external payable;
 
         // Query functions
-        function getCurrentValidatorSet()
-            external
-            view
-            returns (address[] memory, uint256[] memory);
-
         function getCurrentValidatorSetWithKeys()
             external
             view
@@ -99,27 +42,29 @@ sol! {
         function getValidatorNum() external view returns (uint256);
         function getEpochLength() external view returns (uint256);
         function getUpdateHeight() external view returns (uint256);
-        function getActiveValidatorCount() external view returns (uint256);
-        function getTotalStaked() external view returns (uint256);
+        function getValidatorCount() external view returns (uint256);
 
         // Management functions
         function setEpochLength(uint256 newLength) external;
-        function setMinStakeAmount(uint256 newAmount) external;
+        function setValidatorNum(uint256 newValidatorNum) external;
 
         // Proxy pattern implementation
         function upgradeTo(address newImplementation) external;
         function setProxyAdmin(address newAdmin) external;
-
+        function AddValidatorBase64(
+            address validator,
+            uint256 votingPower,
+            string calldata publicKey
+        ) external;
         // Internal functions
+        function _base64ToBytes32(string memory base64String) internal pure returns (bytes32);
         function _addValidator(
             address validator,
             uint256 votingPower,
-            uint256 stakedAmount,
             bytes32 publicKey
         ) internal;
 
         function _removeValidator(address validator) internal;
-        function _updateEpochValidators() internal;
     }
 }
 
@@ -128,10 +73,6 @@ sol! {
 pub struct ValidatorInfo {
     pub address: Address,
     pub voting_power: VotingPower,
-    pub staked_amount: u64,
-    pub is_active: bool,
-    pub total_rewards: u64,
-    pub slash_count: u64,
     pub public_key: [u8; 32],
 }
 
@@ -331,10 +272,6 @@ impl DynamicValidatorSetManager {
             let validator = ValidatorInfo {
                 address: Address::new(decoded._0[i].into()),
                 voting_power: decoded._1[i].to::<u64>(),
-                staked_amount: 0, // Needs separate query
-                is_active: true,  // Needs separate query
-                total_rewards: 0, // Needs separate query
-                slash_count: 0,   // Needs separate query
                 public_key: decoded._2[i].into(),
             };
 
