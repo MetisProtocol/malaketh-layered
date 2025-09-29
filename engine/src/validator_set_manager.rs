@@ -7,7 +7,7 @@ use color_eyre::eyre::{eyre, Result};
 use malachitebft_core_types::VotingPower;
 use malachitebft_eth_types::{Address};
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::{info, warn, debug};
 
 sol! {
     contract ValidatorSetManager {
@@ -132,6 +132,14 @@ impl DynamicValidatorSetManager {
 
     /// Check if validator set needs to be updated
     pub async fn should_update_validator_set(&self, current_height: u64) -> bool {
+        let validator_count = self.fetch_validator_count_from_contract().await.unwrap_or(0);
+        if validator_count == 0 {
+            warn!("Validator contract not avalilable or returned zero validators");
+            return false;
+        }
+        let validator_num = self.fetch_validator_num_from_contract().await.unwrap();
+        debug!("Judge update validator set! current_height:{}, epoch_len:{}, val_num:{}, val_count:{}", 
+                            current_height, self.epoch_length, validator_num, validator_count);
         // Check if epoch boundary is reached
         if current_height % self.epoch_length == 0 && current_height > self.last_update_height {
             // match self.fetch_update_height_from_contract().await {
@@ -198,6 +206,28 @@ impl DynamicValidatorSetManager {
         }
 
         let decoded = ValidatorSetManager::getValidatorNumCall::abi_decode_returns(&result)
+            .map_err(|e| eyre!("Failed to decode contract response: {}", e))?;
+
+        Ok(decoded.to::<u64>())
+    }
+
+    /// Get validator count from contract
+    pub async fn fetch_validator_count_from_contract(&self) -> Result<u64> {
+        let call = ValidatorSetManager::getValidatorCountCall {};
+        let call_data = call.abi_encode();
+
+        let result = self
+            .eth_rpc
+            .call_contract(self.contract_address, call_data)
+            .await
+            .map_err(|e| eyre!("Failed to call contract: {}", e))?;
+
+        // Check if result is empty
+        if result.is_empty() {
+            return Err(eyre!("Empty contract response"));
+        }
+
+        let decoded = ValidatorSetManager::getValidatorCountCall::abi_decode_returns(&result)
             .map_err(|e| eyre!("Failed to decode contract response: {}", e))?;
 
         Ok(decoded.to::<u64>())
