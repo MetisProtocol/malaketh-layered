@@ -40,7 +40,7 @@ impl ProposerSelector<TestContext> for RotateProposer {
         let round = round.as_i64() as usize;
 
         let proposer_index = (height - 1 + round) % validator_set.validators.len();
-        validator_set.validators[proposer_index].address
+        validator_set.validators[proposer_index].consensus_address
     }
 }
 

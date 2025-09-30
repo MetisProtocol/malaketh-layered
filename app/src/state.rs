@@ -1,10 +1,10 @@
 //! Internal state of the application. This is a simplified abstract to keep it simple.
 //! A regular application would have mempool implemented, a proper database and input methods like RPC.
-use std::path::PathBuf;
 use bytes::Bytes;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use sha3::Digest;
+use std::path::PathBuf;
 use tokio::time::Instant;
 use tracing::{debug, error, info};
 
@@ -484,7 +484,7 @@ impl State {
         }
 
         self.get_validator_set_from_file()
-        
+
         // Fall back to genesis validator set
         // self.genesis.validator_set.clone()
     }
@@ -496,7 +496,8 @@ impl State {
         validators: Vec<malachitebft_eth_types::Validator>,
     ) {
         let validator_set = ValidatorSet::new(validators);
-        self.dynamic_validator_sets.insert(height, validator_set.clone());
+        self.dynamic_validator_sets
+            .insert(height, validator_set.clone());
         self.genesis.validator_set = validator_set;
     }
 
@@ -525,14 +526,18 @@ impl State {
     /// Creates a validator from contract data with real public key
     pub fn create_validator_from_contract_data(
         &self,
-        _address: Address,
+        operator_address: Address,
         voting_power: VotingPower,
         public_key_bytes: [u8; 32],
     ) -> malachitebft_eth_types::Validator {
         // Create public key from the provided bytes
         let public_key = PublicKey::from_bytes(public_key_bytes);
 
-        malachitebft_eth_types::Validator::new(public_key, voting_power)
+        malachitebft_eth_types::Validator::new_with_operator_addr(
+            operator_address,
+            public_key,
+            voting_power,
+        )
     }
 
     /// Verifies the signature of the proposal.

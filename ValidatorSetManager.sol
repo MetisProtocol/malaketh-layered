@@ -1,10 +1,13 @@
-// SPDX-License-Identifier: MIT
 pragma solidity >=0.8.2 <0.9.0;
 
 contract ValidatorSetManager {
     // Event definitions
-    event ValidatorAdded(address indexed validator, uint256 votingPower);
-    event ValidatorRemoved(address indexed validator);
+    event ValidatorAdded(
+        address indexed consensusAddress,
+        address indexed operatorAddress,
+        uint256 votingPower
+    );
+    event ValidatorRemoved(address indexed consensusAddress);
     event ProxyUpgraded(
         address indexed oldImplementation,
         address indexed newImplementation
@@ -12,13 +15,15 @@ contract ValidatorSetManager {
 
     // Struct definitions
     struct ValidatorInfo {
-        address validator;
+        address consensusAddress; // Tendermint address for consensus
+        address operatorAddress; // Ethereum address for operations
         uint256 votingPower;
         bytes32 publicKey; // Add public key field
     }
 
     // State variables
-    mapping(address => ValidatorInfo) public validators;
+    mapping(address => ValidatorInfo) public validators; // consensus address => ValidatorInfo
+    mapping(address => address) public consensusToOperator; // consensus address => operator address
     mapping(uint256 => address[]) public epochValidators;
     address[] public activeValidators;
     uint256 public validatorNum;
@@ -30,18 +35,21 @@ contract ValidatorSetManager {
 
     constructor() {
         _addDefaultValidator(
+            0x6DC44Cc1eAEF40776f07529DB710e630FD71809f,
             0x0754445aedA0441230D3ab099B0942181915186C,
             0x97007a7ab3b4ca24f8b88e6dceb764fe8bff810bf45fc16ef7bf0941fcbd7a27, // lwB6erO0yiT4uI5tzrdk/ov/gQv0X8Fu978JQfy9eic=
             1
         );
-        
+
         _addDefaultValidator(
+            0x816CB06248bA969a6dbb23c5A2f3059AdfF94ECf,
             0x3f8F2908B1B5B6Ef3eEC1968fCdF8340A6beC221,
             0xdac4b2f85de5e04c301a077b08256f659dddf36a39578361b1999df56237ab8e, // 2sSy+F3l4EwwGgd7CCVvZZ3d82o5V4NhsZmd9WI3q44=
             1
         );
 
         _addDefaultValidator(
+            0x9F1069B39df29bbf8b6cbD5600069430EE894447,
             0x9Ab1A8B89460fCcd8Eb6739352300988915c71fe,
             0x1b494a5bc634bfa140c1f5b8f765c7c0203a5d3a73883542ec3dd0daafc36157, // G0lKW8Y0v6FAwfW492XHwCA6XTpziDVC7D3Q2q/DYVc=
             1
@@ -51,11 +59,17 @@ contract ValidatorSetManager {
     }
 
     function _addDefaultValidator(
-        address validator, 
-        bytes32 publicKey, 
+        address consensusAddress,
+        address operatorAddress,
+        bytes32 publicKey,
         uint256 votingPower
     ) private {
-        _addValidator(validator, votingPower, publicKey);
+        _addValidator(
+            consensusAddress,
+            operatorAddress,
+            votingPower,
+            publicKey
+        );
     }
 
     // // Modifiers
@@ -69,9 +83,10 @@ contract ValidatorSetManager {
         _;
     }
 
-    // // Initialization functions
+    // Initialization functions
     function initialize(
-        address[] calldata initialValidators,
+        address[] calldata consensusAddresses,
+        address[] calldata operatorAddresses,
         uint256[] calldata initialPowers,
         bytes32[] calldata initialPublicKeys,
         uint256 _epochLength
@@ -83,37 +98,45 @@ contract ValidatorSetManager {
         validatorNum = 21;
 
         require(
-            initialValidators.length == initialPowers.length &&
-            initialValidators.length == initialPublicKeys.length,
+            consensusAddresses.length == operatorAddresses.length &&
+            consensusAddresses.length == initialPowers.length &&
+            consensusAddresses.length == initialPublicKeys.length,
             "Invalid input"
         );
-        require(initialValidators.length >= 3, "Need at least 3 validators");
+        require(consensusAddresses.length >= 3, "Need at least 3 validators");
 
-        for (uint256 i = 0; i < initialValidators.length; i++) {
-            _addValidator(initialValidators[i], initialPowers[i], initialPublicKeys[i]);
+        for (uint256 i = 0; i < consensusAddresses.length; i++) {
+            _addValidator(
+                consensusAddresses[i],
+                operatorAddresses[i],
+                initialPowers[i],
+                initialPublicKeys[i]
+            );
         }
     }
 
     // // Query functions
     // // Get validator set with public keys
-    function getCurrentValidatorSetWithKeys()
-        external
-        view
-        returns (address[] memory, uint256[] memory, bytes32[] memory)
+    function getCurrentValidatorSetWithKeys() external view returns (
+        address[] memory,
+        address[] memory,
+        uint256[] memory,
+        bytes32[] memory
+    )
     {
-        address[] memory validators_list = new address[](
-            activeValidators.length
-        );
+        address[] memory consensusAddresses = new address[](activeValidators.length);
+        address[] memory operatorAddresses = new address[](activeValidators.length);
         uint256[] memory powers = new uint256[](activeValidators.length);
         bytes32[] memory publicKeys = new bytes32[](activeValidators.length);
 
         for (uint256 i = 0; i < activeValidators.length; i++) {
-            validators_list[i] = activeValidators[i];
+            consensusAddresses[i] = activeValidators[i];
+            operatorAddresses[i] = validators[activeValidators[i]].operatorAddress;
             powers[i] = validators[activeValidators[i]].votingPower;
             publicKeys[i] = validators[activeValidators[i]].publicKey;
         }
 
-        return (validators_list, powers, publicKeys);
+        return (consensusAddresses, operatorAddresses, powers, publicKeys);
     }
 
     function getValidatorInfo(
@@ -149,7 +172,7 @@ contract ValidatorSetManager {
         validatorNum = newValidatorNum;
     }
 
-    // // Proxy pattern implementation
+    // Proxy pattern implementation
     function upgradeTo(address newImplementation) external onlyProxyAdmin {
         require(newImplementation != address(0), "Invalid implementation");
         address oldImplementation = implementation;
@@ -163,41 +186,50 @@ contract ValidatorSetManager {
     }
 
     function AddValidator(
-        address validator,
+        address consensusAddress,
+        address operatorAddress,
         uint256 votingPower,
         bytes32 publicKey
     ) external {
-        _addValidator(validator, votingPower, publicKey);
+        _addValidator(
+            consensusAddress,
+            operatorAddress,
+            votingPower,
+            publicKey
+        );
     }
 
     function RemoveValidator(address validator) external {
         _removeValidator(validator);
     }
-    
+
     function _addValidator(
-        address validator,
+        address consensusAddress,
+        address operatorAddress,
         uint256 votingPower,
         bytes32 publicKey
     ) internal {
-        validators[validator] = ValidatorInfo({
-            validator: validator,
+        validators[consensusAddress] = ValidatorInfo({
+            consensusAddress: consensusAddress,
+            operatorAddress: operatorAddress,
             votingPower: votingPower,
             publicKey: publicKey
         });
 
+        // Set mapping from consensus to operator address
+        consensusToOperator[consensusAddress] = operatorAddress;
+
         // todo setUpdateHeight
 
-        activeValidators.push(validator);
-        emit ValidatorAdded(validator, votingPower);
+        activeValidators.push(consensusAddress);
+        emit ValidatorAdded(consensusAddress, operatorAddress, votingPower);
     }
 
     function _removeValidator(address validator) internal {
         // Remove from activeValidators array
         for (uint256 i = 0; i < activeValidators.length; i++) {
             if (activeValidators[i] == validator) {
-                activeValidators[i] = activeValidators[
-                    activeValidators.length - 1
-                ];
+                activeValidators[i] = activeValidators[activeValidators.length - 1];
                 activeValidators.pop();
                 break;
             }

@@ -39,7 +39,8 @@ pub async fn run(
             engine.eth.clone(),
             contract_addr,
             Duration::from_secs(30), // 30 second update interval
-        ).with_genesis_validator_set(state.genesis.validator_set.clone());
+        )
+        .with_genesis_validator_set(state.genesis.validator_set.clone());
         manager.initialize().await?;
         Some(manager)
     } else {
@@ -51,8 +52,6 @@ pub async fn run(
     while !shutdown_flag {
         tokio::select! {
             Some(msg) = channels.consensus.recv() => {
-                debug!("metis-test:consensus-chan recv!!! msg:{:?}", msg);
-
                 match msg {
                     // The first message to handle is the `ConsensusReady` message, signaling to the app
                     // that Malachite is ready to start consensus
@@ -127,7 +126,14 @@ pub async fn run(
                         // propose. Then we send it back to consensus.
                         let latest_block = state.latest_block.expect("Head block hash is not set");
                         let proposer = state.current_proposer.expect("Head block hash is not set");
-                        let execution_payload = engine.generate_block(&latest_block, proposer).await?;
+
+                        // Get the operator address for the proposer (consensus address)
+                        let epoch_length = validator_set_manager.as_ref().map(|m| m.get_epoch_length_value()).unwrap();
+                        let validator_set = state.get_validator_set(state.current_height, epoch_length);
+                        let validator = validator_set.get_by_address(&proposer).expect("Proposer should be in validator set");
+
+
+                        let execution_payload = engine.generate_block(&latest_block,  validator.operator_address).await?;
                         debug!("🌈 Got execution payload: {:?}", execution_payload);
 
                         // Store block in state and propagate to peers.
@@ -431,18 +437,19 @@ pub async fn update_validator_set(
                 let mut converted_validators = Vec::new();
                 for validator in validators {
                     // Use real public key obtained from contract
-                    converted_validators.push(
-                        state.create_validator_from_contract_data(
-                            validator.address, 
-                            validator.voting_power,
-                            validator.public_key
-                        )
-                    );
+                    converted_validators.push(state.create_validator_from_contract_data(
+                        validator.operator_address,
+                        validator.voting_power,
+                        validator.public_key,
+                    ));
                 }
                 state.update_validator_set(height, converted_validators);
             }
             Err(e) => {
-                warn!("Failed to update validator set from contract: {}, using cached set", e);
+                warn!(
+                    "Failed to update validator set from contract: {}, using cached set",
+                    e
+                );
             }
         }
     }
