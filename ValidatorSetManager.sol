@@ -172,6 +172,11 @@ contract ValidatorSetManager {
         validatorNum = newValidatorNum;
     }
 
+    function setUpdateHeigt(uint256 newHeight) external onlyAdmin {
+        require(newHeight >= 0, "Invalid validator number");
+        updateHeight = newHeight;
+    }
+
     // Proxy pattern implementation
     function upgradeTo(address newImplementation) external onlyProxyAdmin {
         require(newImplementation != address(0), "Invalid implementation");
@@ -219,7 +224,8 @@ contract ValidatorSetManager {
         // Set mapping from consensus to operator address
         consensusToOperator[consensusAddress] = operatorAddress;
 
-        // todo setUpdateHeight
+        // setUpdateHeight
+        updateHeight = block.number;
 
         activeValidators.push(consensusAddress);
         emit ValidatorAdded(consensusAddress, operatorAddress, votingPower);
@@ -235,7 +241,8 @@ contract ValidatorSetManager {
             }
         }
 
-        // todo setUpdateHeight
+        // setUpdateHeight
+        updateHeight = block.number;
 
         emit ValidatorRemoved(validator);
     }

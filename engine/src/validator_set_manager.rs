@@ -150,24 +150,26 @@ impl DynamicValidatorSetManager {
         }
         let validator_num = self.fetch_validator_num_from_contract().await.unwrap();
         debug!(
-            "Judge update validator set! current_height:{}, epoch_len:{}, val_num:{}, val_count:{}",
-            current_height, self.epoch_length, validator_num, validator_count
+            "Judge update validator set! current_height:{}, epoch_len:{}, val_num:{}, val_count:{}, last_updateH:{}",
+            current_height, self.epoch_length, validator_num, validator_count, self.last_update_height
         );
         // Check if epoch boundary is reached
         if current_height % self.epoch_length == 0 && current_height > self.last_update_height {
-            // match self.fetch_update_height_from_contract().await {
-            //     Ok(height) => {
-            //         // validator_set in state has been updated with contract value
-            //         if self.last_update_height > height && height != 0 {
-            //             debug!("Contract update height {} is less than last update height {}, skipping update", height, self.last_update_height);
-            //             return false;
-            //         }
-            //     },
-            //     Err(e) => {
-            //         warn!("Failed to fetch update height from contract: {}", e);
-            //         return false;
-            //     }
-            // };
+            match self.fetch_update_height_from_contract().await {
+                Ok(height) => {
+                    // validator_set in state has been updated with contract value
+                    if self.last_update_height >= height {
+                        debug!("Contract update height {} is less than last update height {}, skipping update", height, self.last_update_height);
+                        return false;
+                    } else {
+                        debug!("Contract update height from contract: {}", height);
+                    }
+                },
+                Err(e) => {
+                    warn!("Failed to fetch update height from contract: {}", e);
+                    return false;
+                }
+            };
 
             return true;
         }
@@ -244,7 +246,7 @@ impl DynamicValidatorSetManager {
     }
 
     /// Get update height from contract
-    async fn _fetch_update_height_from_contract(&self) -> Result<u64> {
+    async fn fetch_update_height_from_contract(&self) -> Result<u64> {
         let call = ValidatorSetManager::getUpdateHeightCall {};
         let call_data = call.abi_encode();
 
