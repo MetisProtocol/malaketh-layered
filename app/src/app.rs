@@ -430,7 +430,6 @@ pub async fn update_validator_set(
 ) -> eyre::Result<()> {
     // Check if validator set needs to be updated
     if manager.should_update_validator_set(height.as_u64()).await {
-        info!("Updating validator set at height {}", height);
         match manager.update_validator_set(height.as_u64()).await {
             Ok(validators) => {
                 // Convert validators from contract to Malachite format
