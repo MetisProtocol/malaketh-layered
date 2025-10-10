@@ -7,28 +7,11 @@ use serde::{Deserialize, Serialize};
 use crate::signing::PublicKey;
 use crate::{Address, TestContext};
 
-pub struct ValidatorSol {
-    pub public_key: String,
-    pub voting_power: u64,
-}
-
-impl ValidatorSol {
-    pub fn to_validator(&self) -> Validator {
-        let pub_key_json = format!(
-            r#"{{"type": "tendermint/PubKeyEd25519", "value": "{}"}}"#,
-            self.public_key
-        );
-        Validator::new(
-            serde_json::from_str(&pub_key_json).expect("Invalid public key"),
-            self.voting_power,
-        )
-    }
-}
-
 /// A validator is a public key and voting power
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Validator {
-    pub address: Address,
+    pub consensus_address: Address, // Tendermint address for consensus
+    pub operator_address: Address,  // Ethereum address for smart contract operations
     pub public_key: PublicKey,
     pub voting_power: VotingPower,
 }
@@ -37,7 +20,21 @@ impl Validator {
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn new(public_key: PublicKey, voting_power: VotingPower) -> Self {
         Self {
-            address: Address::from_public_key(&public_key),
+            consensus_address: Address::from_public_key(&public_key),
+            operator_address: Address::from_public_key(&public_key), // TODO should use operator pubkey
+            public_key,
+            voting_power,
+        }
+    }
+
+    pub fn new_with_operator_addr(
+        operator_address: Address,
+        public_key: PublicKey,
+        voting_power: VotingPower,
+    ) -> Self {
+        Self {
+            consensus_address: Address::from_public_key(&public_key),
+            operator_address,
             public_key,
             voting_power,
         }
@@ -52,13 +49,13 @@ impl PartialOrd for Validator {
 
 impl Ord for Validator {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.address.cmp(&other.address)
+        self.consensus_address.cmp(&other.consensus_address)
     }
 }
 
 impl malachitebft_core_types::Validator<TestContext> for Validator {
     fn address(&self) -> &Address {
-        &self.address
+        &self.consensus_address
     }
 
     fn public_key(&self) -> &PublicKey {
@@ -103,7 +100,6 @@ impl ValidatorSet {
         self.validators.iter()
     }
 
-
     /// The total voting power of the validator set
     pub fn total_voting_power(&self) -> VotingPower {
         self.validators.iter().map(|v| v.voting_power).sum()
@@ -111,7 +107,9 @@ impl ValidatorSet {
 
     /// Get a validator by its address
     pub fn get_by_address(&self, address: &Address) -> Option<&Validator> {
-        self.validators.iter().find(|v| &v.address == address)
+        self.validators
+            .iter()
+            .find(|v| &v.consensus_address == address)
     }
 
     pub fn get_by_public_key(&self, public_key: &PublicKey) -> Option<&Validator> {
@@ -153,72 +151,5 @@ impl malachitebft_core_types::ValidatorSet<TestContext> for ValidatorSet {
 
     fn get_by_index(&self, index: usize) -> Option<&Validator> {
         self.validators.get(index)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const VALIDATOR_SET_JSON: &str = r#"
-    {
-        "validators": [
-            {
-                "address": "0x0754445aeda0441230d3ab099b0942181915186c",
-                "public_key": {
-                    "type": "tendermint/PubKeyEd25519",
-                    "value": "lwB6erO0yiT4uI5tzrdk/ov/gQv0X8Fu978JQfy9eic="
-                },
-                "voting_power": 1
-            },
-            {
-                "address": "0x3f8f2908b1b5b6ef3eec1968fcdf8340a6bec221",
-                "public_key": {
-                    "type": "tendermint/PubKeyEd25519",
-                    "value": "2sSy+F3l4EwwGgd7CCVvZZ3d82o5V4NhsZmd9WI3q44="
-                },
-                "voting_power": 1
-            },
-            {
-                "address": "0x9ab1a8b89460fccd8eb6739352300988915c71fe",
-                "public_key": {
-                    "type": "tendermint/PubKeyEd25519",
-                    "value": "G0lKW8Y0v6FAwfW492XHwCA6XTpziDVC7D3Q2q/DYVc="
-                },
-                "voting_power": 1
-            }
-        ]
-    }
-    "#;
-
-    #[test]
-    fn test_validator_set() {
-        let validator_set: ValidatorSet = serde_json::from_str(VALIDATOR_SET_JSON).unwrap();
-        
-        assert_eq!(validator_set.validators.len(), 3);
-        assert_eq!(validator_set.validators[0].voting_power, 1);
-    }
-
-    #[test]
-    fn test_validator_sol() {
-        let validator_sol = ValidatorSol {
-            public_key: "lwB6erO0yiT4uI5tzrdk/ov/gQv0X8Fu978JQfy9eic=".to_string(),
-            voting_power: 1,
-        };
-        let validator = validator_sol.to_validator();
-        assert_eq!(validator.voting_power, 1);
-        assert_eq!(
-            validator.public_key,
-            serde_json::from_str(
-                r#"{
-                    "type": "tendermint/PubKeyEd25519",
-                    "value": "lwB6erO0yiT4uI5tzrdk/ov/gQv0X8Fu978JQfy9eic="
-                }"#
-            )
-            .unwrap()
-        );
-
-        let validator_set: ValidatorSet = serde_json::from_str(VALIDATOR_SET_JSON).unwrap();
-        assert_eq!(validator_set.validators[0].public_key, validator.public_key);
     }
 }

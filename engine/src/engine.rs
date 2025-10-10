@@ -67,7 +67,7 @@ impl Engine {
     pub async fn generate_block(
         &self,
         latest_block: &ExecutionBlock,
-        proposer: Address,
+        operator_address: Address,
     ) -> eyre::Result<ExecutionPayloadV3> {
         debug!("🟠 generate_block on top of {:?}", latest_block);
 
@@ -84,8 +84,8 @@ impl Engine {
             // The mix_hash field in the generated block will be equal to prev_randao.
             // TODO: generate value according to spec.
             prev_randao: latest_block.prev_randao,
-            
-            suggested_fee_recipient: proposer.to_alloy_address(),
+
+            suggested_fee_recipient: operator_address.to_alloy_address(),
 
             // Cannot be None in V3.
             withdrawals: Some(vec![]),
@@ -132,15 +132,21 @@ impl Engine {
         block_interval: Duration,
     ) {
         let now = self._timestamp_now_millis();
-        debug!("block interval. time_now:{:?}, last_blocktime:{:?}", now, latest_block_timestamp_millis);
+        debug!(
+            "block interval. time_now:{:?}, last_blocktime:{:?}",
+            now, latest_block_timestamp_millis
+        );
         // when blocktime < 1, eth block timestamp is forwarder than now
         if now <= latest_block_timestamp_millis {
             tokio::time::sleep(block_interval).await;
-            return
+            return;
         }
 
         let time_interval = Duration::from_millis(now - latest_block_timestamp_millis);
-        debug!("block interval. time_interval:{:?}, block_interval:{:?}", time_interval, block_interval);
+        debug!(
+            "block interval. time_interval:{:?}, block_interval:{:?}",
+            time_interval, block_interval
+        );
         if time_interval < block_interval {
             tokio::time::sleep(block_interval - time_interval).await
         }

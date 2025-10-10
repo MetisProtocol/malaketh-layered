@@ -1,18 +1,19 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::{ethereum_rpc::EthereumRPC};
+use crate::ethereum_rpc::EthereumRPC;
 use alloy_sol_types::{sol, SolCall};
 use base64::Engine;
 use color_eyre::eyre::{eyre, Result};
 use malachitebft_core_types::VotingPower;
-use malachitebft_eth_types::{Address};
+use malachitebft_eth_types::Address;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn, debug};
+use tracing::{debug, info, warn};
 
 sol! {
     contract ValidatorSetManager {
         struct ValidatorInfo {
-            address validator;
+            address consensusAddress;  // Tendermint address for consensus
+            address operatorAddress;   // Ethereum address for operations
             uint256 votingPower;
             bytes32 publicKey;
         }
@@ -23,7 +24,8 @@ sol! {
 
         // Initialization functions
         function initialize(
-            address[] calldata initialValidators,
+            address[] calldata consensusAddresses,
+            address[] calldata operatorAddresses,
             uint256[] calldata initialPowers,
             bytes32[] calldata initialPublicKeys,
             uint256 _epochLength,
@@ -33,10 +35,10 @@ sol! {
         function getCurrentValidatorSetWithKeys()
             external
             view
-            returns (address[] memory, uint256[] memory, bytes32[] memory);
+            returns (address[] memory, address[] memory, uint256[] memory, bytes32[] memory);
 
         function getValidatorInfo(
-            address validator
+            address consensusAddress
         ) external view returns (ValidatorInfo memory);
 
         function getValidatorNum() external view returns (uint256);
@@ -59,19 +61,21 @@ sol! {
         // Internal functions
         function _base64ToBytes32(string memory base64String) internal pure returns (bytes32);
         function _addValidator(
-            address validator,
+            address consensusAddress,
+            address operatorAddress,
             uint256 votingPower,
             bytes32 publicKey
         ) internal;
 
-        function _removeValidator(address validator) internal;
+        function _removeValidator(address consensusAddress) internal;
     }
 }
 
 /// Validator information
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ValidatorInfo {
-    pub address: Address,
+    pub consensus_address: Address, // Tendermint address for consensus
+    pub operator_address: Address,  // Ethereum address for operations
     pub voting_power: VotingPower,
     pub public_key: [u8; 32],
 }
@@ -87,7 +91,11 @@ pub struct DynamicValidatorSetManager {
 }
 
 impl DynamicValidatorSetManager {
-    pub fn new(eth_rpc: EthereumRPC, contract_address: Address, _update_interval: Duration) -> Self {
+    pub fn new(
+        eth_rpc: EthereumRPC,
+        contract_address: Address,
+        _update_interval: Duration,
+    ) -> Self {
         Self {
             eth_rpc,
             contract_address,
@@ -132,29 +140,36 @@ impl DynamicValidatorSetManager {
 
     /// Check if validator set needs to be updated
     pub async fn should_update_validator_set(&self, current_height: u64) -> bool {
-        let validator_count = self.fetch_validator_count_from_contract().await.unwrap_or(0);
+        let validator_count = self
+            .fetch_validator_count_from_contract()
+            .await
+            .unwrap_or(0);
         if validator_count == 0 {
             warn!("Validator contract not avalilable or returned zero validators");
             return false;
         }
         let validator_num = self.fetch_validator_num_from_contract().await.unwrap();
-        debug!("Judge update validator set! current_height:{}, epoch_len:{}, val_num:{}, val_count:{}", 
-                            current_height, self.epoch_length, validator_num, validator_count);
+        debug!(
+            "Judge update validator set! current_height:{}, epoch_len:{}, val_num:{}, val_count:{}, last_updateH:{}",
+            current_height, self.epoch_length, validator_num, validator_count, self.last_update_height
+        );
         // Check if epoch boundary is reached
         if current_height % self.epoch_length == 0 && current_height > self.last_update_height {
-            // match self.fetch_update_height_from_contract().await {
-            //     Ok(height) => {
-            //         // validator_set in state has been updated with contract value
-            //         if self.last_update_height > height && height != 0 {
-            //             debug!("Contract update height {} is less than last update height {}, skipping update", height, self.last_update_height);
-            //             return false;
-            //         }
-            //     },
-            //     Err(e) => {
-            //         warn!("Failed to fetch update height from contract: {}", e);
-            //         return false;
-            //     }
-            // };
+            match self.fetch_update_height_from_contract().await {
+                Ok(height) => {
+                    // validator_set in state has been updated with contract value
+                    if self.last_update_height >= height {
+                        debug!("Contract update height {} is less than last update height {}, skipping update", height, self.last_update_height);
+                        return false;
+                    } else {
+                        debug!("Contract update height from contract: {}", height);
+                    }
+                },
+                Err(e) => {
+                    warn!("Failed to fetch update height from contract: {}", e);
+                    return false;
+                }
+            };
 
             return true;
         }
@@ -181,10 +196,7 @@ impl DynamicValidatorSetManager {
 
         self.last_update_height = current_height;
 
-        info!(
-            "Updated validator set: {} validators",
-            validators.len(),
-        );
+        info!("Updated validator set: {} validators", validators.len(),);
 
         Ok(validators)
     }
@@ -234,7 +246,7 @@ impl DynamicValidatorSetManager {
     }
 
     /// Get update height from contract
-    async fn _fetch_update_height_from_contract(&self) -> Result<u64> {
+    async fn fetch_update_height_from_contract(&self) -> Result<u64> {
         let call = ValidatorSetManager::getUpdateHeightCall {};
         let call_data = call.abi_encode();
 
@@ -299,19 +311,24 @@ impl DynamicValidatorSetManager {
 
         let mut validators = Vec::new();
         for i in 0..decoded._0.len() {
+            let consensus_address = Address::new(decoded._0[i].into());
+            let operator_address = Address::new(decoded._1[i].into());
+
             let validator = ValidatorInfo {
-                address: Address::new(decoded._0[i].into()),
-                voting_power: decoded._1[i].to::<u64>(),
-                public_key: decoded._2[i].into(),
+                consensus_address,
+                operator_address,
+                voting_power: decoded._2[i].to::<u64>(),
+                public_key: decoded._3[i].into(),
             };
 
             // Output detailed information for each validator
             let public_key_base64 =
                 base64::engine::general_purpose::STANDARD.encode(validator.public_key);
             info!(
-                "Validator {}: address={}, voting_power={}, public_key={}",
+                "Validator {}: consensus_address={}, operator_address={}, voting_power={}, public_key={}",
                 i + 1,
-                validator.address,
+                validator.consensus_address,
+                validator.operator_address,
                 validator.voting_power,
                 public_key_base64
             );
