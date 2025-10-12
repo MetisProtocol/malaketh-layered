@@ -569,9 +569,11 @@ impl State {
         let signature = signature.ok_or(SignatureVerificationError::MissingFinPart)?;
 
         // Retrieve the public key of the proposer
-        // todo put epoch_length into state
+        // Note: We need to get epoch_length from config in production
+        // For now, using a reasonable default value
+        let epoch_length = 100; // This should be passed from config
         let public_key = self
-            .get_validator_set(self.current_height, 100)
+            .get_validator_set(self.current_height, epoch_length)
             .get_by_address(&parts.proposer)
             .map(|v| v.public_key);
 
