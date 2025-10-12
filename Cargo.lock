@@ -4136,6 +4136,7 @@ name = "malachitebft-eth-app"
 version = "0.0.1"
 dependencies = [
  "alloy-consensus",
+ "alloy-primitives 0.8.25",
  "alloy-rpc-types-engine",
  "alloy-rpc-types-eth",
  "async-trait",
