@@ -26,6 +26,7 @@ use crate::app_config::{load_config, Config};
 use crate::metrics::DbMetrics;
 use crate::state::State;
 use crate::store::Store;
+use alloy_primitives::Address as AlloyAddress;
 use malachitebft_eth_cli::metrics;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
 use malachitebft_eth_types::{
@@ -225,6 +226,12 @@ impl Node for App {
 
         let app_handle = tokio::spawn(
             async move {
+                // Validate dynamic validator set configuration
+                if let Err(e) = config.engine.dynamic_validator_set.validate() {
+                    tracing::error!("Invalid dynamic validator set configuration: {}", e);
+                    return;
+                }
+
                 // Parse validator set contract address
                 let validator_set_contract_address = if config.engine.dynamic_validator_set.enabled
                 {
@@ -233,26 +240,7 @@ impl Node for App {
                         .dynamic_validator_set
                         .contract_address
                         .as_ref()
-                        .and_then(|addr| {
-                            // Simplified address parsing, should use more robust parsing method in practice
-                            if addr.len() == 42 && addr.starts_with("0x") {
-                                let hex_str = &addr[2..];
-                                if hex_str.len() == 40 {
-                                    let mut bytes = [0u8; 20];
-                                    for (i, chunk) in hex_str.as_bytes().chunks(2).enumerate() {
-                                        if i < 20 && chunk.len() == 2 {
-                                            let hex_byte = std::str::from_utf8(chunk).ok()?;
-                                            bytes[i] = u8::from_str_radix(hex_byte, 16).ok()?;
-                                        }
-                                    }
-                                    Some(Address::new(bytes))
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
-                        })
+                        .and_then(|addr| AlloyAddress::from_str(addr).ok().map(Address::from))
                 } else {
                     None
                 };
