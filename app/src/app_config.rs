@@ -55,6 +55,27 @@ impl Default for DynamicValidatorSetConfig {
     }
 }
 
+impl DynamicValidatorSetConfig {
+    /// Validate the configuration
+    pub fn validate(&self) -> Result<(), String> {
+        if self.enabled && self.contract_address.is_none() {
+            return Err("contract_address is required when dynamic validator set is enabled".to_string());
+        }
+        if self.epoch_length_blocks == 0 {
+            return Err("epoch_length_blocks must be greater than 0".to_string());
+        }
+        if self.update_interval_seconds == 0 {
+            return Err("update_interval_seconds must be greater than 0".to_string());
+        }
+        if let Some(addr) = &self.contract_address {
+            if !addr.starts_with("0x") || addr.len() != 42 {
+                return Err(format!("Invalid contract address format: {}", addr));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Extra Malachite configuration options
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EngineConfig {
