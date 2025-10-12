@@ -86,7 +86,6 @@ pub struct DynamicValidatorSetManager {
     contract_address: Address,
     epoch_length: u64,
     last_update_height: u64,
-    // update_interval: Duration,
     genesis_validator_set: Option<malachitebft_eth_types::ValidatorSet>,
 }
 
@@ -101,7 +100,6 @@ impl DynamicValidatorSetManager {
             contract_address,
             epoch_length: 100, // Default 100 blocks per epoch
             last_update_height: 0,
-            // update_interval,
             genesis_validator_set: None,
         }
     }
@@ -145,10 +143,13 @@ impl DynamicValidatorSetManager {
             .await
             .unwrap_or(0);
         if validator_count == 0 {
-            warn!("Validator contract not avalilable or returned zero validators");
+            warn!("Validator contract not available or returned zero validators");
             return false;
         }
-        let validator_num = self.fetch_validator_num_from_contract().await.unwrap();
+        let Ok(validator_num) = self.fetch_validator_num_from_contract().await else {
+            warn!("Failed to fetch validator num from contract");
+            return false;
+        };
         debug!(
             "Judge update validator set! current_height:{}, epoch_len:{}, val_num:{}, val_count:{}, last_updateH:{}",
             current_height, self.epoch_length, validator_num, validator_count, self.last_update_height
