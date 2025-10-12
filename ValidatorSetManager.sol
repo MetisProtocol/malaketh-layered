@@ -172,8 +172,7 @@ contract ValidatorSetManager {
         validatorNum = newValidatorNum;
     }
 
-    function setUpdateHeigt(uint256 newHeight) external onlyAdmin {
-        require(newHeight >= 0, "Invalid validator number");
+    function setUpdateHeight(uint256 newHeight) external onlyAdmin {
         updateHeight = newHeight;
     }
 
@@ -214,6 +213,10 @@ contract ValidatorSetManager {
         uint256 votingPower,
         bytes32 publicKey
     ) internal {
+        require(consensusAddress != address(0), "Invalid consensus address");
+        require(operatorAddress != address(0), "Invalid operator address");
+        require(validators[consensusAddress].consensusAddress == address(0), "Validator already exists");
+
         validators[consensusAddress] = ValidatorInfo({
             consensusAddress: consensusAddress,
             operatorAddress: operatorAddress,
@@ -232,6 +235,13 @@ contract ValidatorSetManager {
     }
 
     function _removeValidator(address validator) internal {
+        require(validator != address(0), "Invalid validator address");
+        require(validators[validator].consensusAddress != address(0), "Validator does not exist");
+
+        // Remove from validators mapping
+        delete validators[validator];
+        delete consensusToOperator[validator];
+
         // Remove from activeValidators array
         for (uint256 i = 0; i < activeValidators.length; i++) {
             if (activeValidators[i] == validator) {
