@@ -13,6 +13,7 @@ contract ValidatorSetManagerV1 is Initializable, OwnableUpgradeable, UUPSUpgrade
         uint256 votingPower
     );
     event ValidatorRemoved(address indexed consensusAddress);
+    event VotingPowerUpdated(address indexed consensusAddress, uint256 oldPower, uint256 newPower);
 
     // Struct definitions
     struct ValidatorInfo {
@@ -138,6 +139,18 @@ contract ValidatorSetManagerV1 is Initializable, OwnableUpgradeable, UUPSUpgrade
 
     function removeValidator(address validator) external onlyOwner {
         _removeValidator(validator);
+    }
+
+    // 新增：更新验证者投票权重
+    function updateVotingPower(address consensusAddress, uint256 newPower) external onlyOwner {
+        require(validators[consensusAddress].consensusAddress != address(0), "Validator not found");
+        require(newPower >= 0, "Voting power cannot be negative");
+        
+        uint256 oldPower = validators[consensusAddress].votingPower;
+        validators[consensusAddress].votingPower = newPower;
+        updateHeight = block.number;
+        
+        emit VotingPowerUpdated(consensusAddress, oldPower, newPower);
     }
 
     function _addValidator(
