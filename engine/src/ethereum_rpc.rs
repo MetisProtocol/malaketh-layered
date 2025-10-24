@@ -156,6 +156,36 @@ impl EthereumRPC {
         self.rpc_request("eth_sendTransaction", params, Duration::from_secs(10)).await
     }
 
+    /// Send raw transaction (eth_sendRawTransaction)
+    /// Takes a signed transaction in hex format
+    pub async fn send_raw_transaction(&self, signed_tx: &str) -> eyre::Result<String> {
+        let params = json!([signed_tx]);
+        self.rpc_request("eth_sendRawTransaction", params, Duration::from_secs(10)).await
+    }
+
+    /// Get transaction count / nonce (eth_getTransactionCount)
+    pub async fn get_transaction_count(&self, address: &str, block: &str) -> eyre::Result<String> {
+        let params = json!([address, block]);
+        self.rpc_request("eth_getTransactionCount", params, Duration::from_secs(5)).await
+    }
+
+    /// eth_call wrapper for contracts
+    pub async fn eth_call(&self, to: &str, data: &[u8]) -> eyre::Result<Vec<u8>> {
+        let params = json!([
+            {
+                "to": to,
+                "data": format!("0x{}", hex::encode(data))
+            },
+            "latest"
+        ]);
+        
+        let result: String = self.rpc_request("eth_call", params, Duration::from_secs(5)).await?;
+        
+        // Remove 0x prefix and decode hex
+        let hex_str = result.strip_prefix("0x").unwrap_or(&result);
+        hex::decode(hex_str).map_err(|e| eyre::eyre!("Failed to decode hex response: {}", e))
+    }
+
     /// Get transaction receipt (eth_getTransactionReceipt)
     pub async fn get_transaction_receipt(&self, tx_hash: &str) -> eyre::Result<Option<TransactionReceipt>> {
         let params = json!([tx_hash]);
