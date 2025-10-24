@@ -1,0 +1,59 @@
+[
+  {
+    "type": "function",
+    "name": "maxElectedValidators",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getValidatorElectionInfo",
+    "inputs": [
+      {
+        "name": "offset",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "limit",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "consensusAddrs",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "votingPowers",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "operatorAddrs",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "tendermintPubKeys",
+        "type": "bytes[]",
+        "internalType": "bytes[]"
+      },
+      {
+        "name": "totalLength",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  }
+]
