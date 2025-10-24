@@ -23,6 +23,8 @@ alloy-consensus = { workspace = true }
 alloy-primitives = { workspace = true }
 alloy-rpc-types-eth = { workspace = true }
 alloy-rpc-types-engine = { workspace = true }
+alloy-dyn-abi = { version = "0.8.15" }
+alloy-json-abi = { version = "0.8.15", default-features = false }
 ethereum_ssz = "0.8"
 
 eyre.workspace = true
