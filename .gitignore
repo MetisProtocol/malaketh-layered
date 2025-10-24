@@ -4,4 +4,3 @@
 monitoring/data-grafana/
 monitoring/data-prometheus/
 .idea/
-assets/genesis.json
