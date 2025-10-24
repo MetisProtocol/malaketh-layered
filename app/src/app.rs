@@ -1,9 +1,12 @@
 use bytes::Bytes;
 use color_eyre::eyre::{self, eyre};
 use ssz::{Decode, Encode};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
+use alloy_primitives::Address as AlloyAddress;
 use alloy_rpc_types_engine::ExecutionPayloadV3;
 use malachitebft_app_channel::app::engine::host::Next;
 use malachitebft_app_channel::app::streaming::StreamContent;
@@ -14,12 +17,13 @@ use malachitebft_app_channel::app::types::{LocallyProposedValue, ProposedValue};
 use malachitebft_app_channel::{AppMsg, Channels, NetworkMsg};
 use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::json_structures::ExecutionBlock;
+use malachitebft_eth_engine::validator_executor::ValidatorExecutor;
+use malachitebft_eth_engine::wallet::Wallet;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
-use malachitebft_eth_types::{Address, Block, BlockHash, Height, TestContext};
+use malachitebft_eth_types::{Block, BlockHash, Height, TestContext};
 use tokio::sync::mpsc::Receiver;
 
 use crate::state::{decode_value, State};
-use malachitebft_eth_engine::validator_set_manager::DynamicValidatorSetManager;
 
 pub async fn run(
     state: &mut State,
@@ -27,26 +31,27 @@ pub async fn run(
     engine: Engine,
     block_interval: Duration,
     mut shutdown_rx: Receiver<()>,
-    validator_set_contract_address: Option<Address>,
+    _validator_set_contract_address: Option<AlloyAddress>, // Unused parameter (kept for API compatibility)
 ) -> eyre::Result<()> {
-    // Initialize dynamic validator set manager
-    let mut validator_set_manager = if let Some(contract_addr) = validator_set_contract_address {
-        info!(
-            "Initializing dynamic validator set manager with contract: {}",
-            contract_addr
-        );
-        let mut manager = DynamicValidatorSetManager::new(
-            engine.eth.clone(),
-            contract_addr,
-            Duration::from_secs(30), // 30 second update interval
-        )
-        .with_genesis_validator_set(state.genesis.validator_set.clone());
-        manager.initialize().await?;
-        Some(manager)
-    } else {
-        info!("Using static validator set from genesis");
-        None
-    };
+    // Initialize ValidatorExecutor for on-chain validator management
+    let validator_executor = Arc::new(ValidatorExecutor::new(
+        Arc::new(engine.eth.clone()),
+        100, // epoch_length - TODO: make configurable
+        21,  // max_validators - TODO: make configurable
+    )?);
+
+    // Initialize Wallet for transaction signing
+    // TODO: Load validator keys from config
+    let _wallet = Arc::new(Mutex::new(Wallet::new()));
+
+    // Get chain ID
+    let chain_id_hex = engine.eth.get_chain_id().await?;
+    let chain_id = u64::from_str_radix(chain_id_hex.trim_start_matches("0x"), 16)?;
+
+    info!(
+        "Validator executor initialized with epoch_length=100, max_validators=21, chain_id={}",
+        chain_id
+    );
 
     let mut shutdown_flag = false;
     while !shutdown_flag {
@@ -56,6 +61,7 @@ pub async fn run(
                     // The first message to handle is the `ConsensusReady` message, signaling to the app
                     // that Malachite is ready to start consensus
                     AppMsg::ConsensusReady { reply } => {
+                        info!("📨 Channel received ConsensusReady...");
                         if state.current_height <= Height::default() {
                             let start_height = state
                             .max_decided_value_height()
@@ -65,7 +71,6 @@ pub async fn run(
 
                             state.set_current_height(start_height).await;
                         }
-
                         info!("🟢🟢 Consensus is ready!!! start_height: {:?}", state.current_height);
 
                         // Node start-up: https://hackmd.io/@danielrachi/engine_api#Node-startup
@@ -74,14 +79,13 @@ pub async fn run(
 
                         // Get the latest block from the execution engine
                         let latest_block = engine.eth.get_block_by_number("latest").await?.unwrap();
-                        debug!("👉 latest_block: {:?}", latest_block);
+                        info!("👉👉 The latest block from the execution engine: {:?}", latest_block.block_number);
                         state.latest_block = Some(latest_block);
 
                         // We can simply respond by telling the engine to start consensus
                         // at the current height, which is initially 1
-                        let epoch_length = validator_set_manager.as_ref().map(|m| m.get_epoch_length_value()).unwrap();
                         if reply.send(
-                            (state.current_height, state.get_validator_set(state.current_height, epoch_length).clone())
+                            (state.current_height, state.get_current_validator_set().clone())
                         ).is_err()
                         {
                             error!("Failed to send ConsensusReady reply");
@@ -97,7 +101,7 @@ pub async fn run(
                         role,
                         ..
                     } => {
-                        info!(%height, %round, %proposer, ?role, "🟢🟢 Started round");
+                        info!(%height, %round, %proposer, ?role, "📨 Channel received StartedRound...");
 
                         // We can use that opportunity to update our internal state
                         state.current_height = height;
@@ -105,7 +109,22 @@ pub async fn run(
                         state.current_proposer = Some(proposer);
 
                         // todo support
-                        // https://github.com/informalsystems/malachite/commit/6840ae388f7a9ea63b8de4b9b2087be7274bc78d
+                        // let pending = state.store.get_pending_proposals(height, round).await?;
+                        // info!(%height, %round, "Found {} pending proposals, validating...", pending.len());
+                        // for p in &pending {
+                        //     // TODO: check proposal validity
+                        //     state.store.store_undecided_proposal(p.clone()).await?;
+                        //     state.store.remove_pending_proposal(p.clone()).await?;
+                        // }
+                        //
+                        // // If we have already built or seen values for this height and round,
+                        // // send them all back to consensus. This may happen when we are restarting after a crash.
+                        // let proposals = state.store.get_undecided_proposals(height, round).await?;
+                        // info!(%height, %round, "Found {} undecided proposals", proposals.len());
+                        //
+                        // if reply_value.send(proposals).is_err() {
+                        //     error!("Failed to send undecided proposals");
+                        // }
                     }
 
                     // At some point, we may end up being the proposer for that round, and the consensus engine
@@ -119,19 +138,16 @@ pub async fn run(
                         // NOTE: We can ignore the timeout as we are building the value right away.
                         // If we were let's say reaping as many txes from a mempool and executing them,
                         // then we would need to respect the timeout and stop at a certain point.
-
-                        info!(%height, %round, "🟢🟢 Consensus is requesting a value to propose");
+                        info!(%height, %round, "📨 Channel received GetValue...Consensus is requesting a value to propose");
 
                         // We need to ask the execution engine for a new value to
                         // propose. Then we send it back to consensus.
-                        let latest_block = state.latest_block.expect("Head block hash is not set");
+                        let latest_block = state.latest_block.as_ref().expect("Head block hash is not set").clone();
                         let proposer = state.current_proposer.expect("Head block hash is not set");
 
                         // Get the operator address for the proposer (consensus address)
-                        let epoch_length = validator_set_manager.as_ref().map(|m| m.get_epoch_length_value()).unwrap();
-                        let validator_set = state.get_validator_set(state.current_height, epoch_length);
+                        let validator_set = state.get_current_validator_set();
                         let validator = validator_set.get_by_address(&proposer).expect("Proposer should be in validator set");
-
 
                         let execution_payload = engine.generate_block(&latest_block,  validator.operator_address).await?;
                         debug!("🌈 Got execution payload: {:?}", execution_payload);
@@ -178,7 +194,7 @@ pub async fn run(
 
                         info!(
                             %from, %part.sequence, part.type = %part_type, part.size = %part_size,
-                            "Received proposal part"
+                            "📨 Channel received ReceivedProposalPart..."
                         );
 
                         let proposed_value = state.received_proposal_part(from, part).await?;
@@ -195,10 +211,14 @@ pub async fn run(
                     // than the one we are at (e.g. because we are lagging behind a little bit),
                     // the engine may ask us for the validator set at that height.
                     //
-                    // Check if we need to update validator set from contract
+                    // Return cached validator set from StakeHub (updated at epoch boundaries)
                     AppMsg::GetValidatorSet { height, reply } => {
-                        let epoch_length = validator_set_manager.as_ref().map(|m| m.get_epoch_length_value()).unwrap();
-                        let validator_set = state.get_validator_set(height, epoch_length).clone();
+                        info!(%height, "📨 Channel received GetValidatorSet...");
+
+                        // Return cached validator set (updated at epoch boundaries)
+                        let validator_set = state.get_current_validator_set().clone();
+                        info!("✅ Returning cached validator set: {} validators",
+                              validator_set.validators.len());
                         if reply.send(Some(validator_set)).is_err() {
                             error!("🔴 Failed to send GetValidatorSet reply");
                         }
@@ -216,7 +236,7 @@ pub async fn run(
                         let round = certificate.round;
                         info!(
                             %height, %round, value = %certificate.value_id,
-                            "🟢🟢 Consensus has decided on value"
+                            "📨 Channel received Decided...Consensus has decided on value"
                         );
 
                         let block_bytes = state
@@ -232,7 +252,7 @@ pub async fn run(
 
                         let new_block_hash = execution_payload.payload_inner.payload_inner.block_hash;
 
-                        assert_eq!(state.latest_block.unwrap().block_hash, parent_block_hash);
+                        assert_eq!(state.latest_block.as_ref().unwrap().block_hash, parent_block_hash);
 
                         let new_block_timestamp = execution_payload.timestamp();
                         let new_block_number = execution_payload.payload_inner.payload_inner.block_number;
@@ -306,18 +326,54 @@ pub async fn run(
                             parent_hash: latest_valid_hash,
                             timestamp: new_block_timestamp,
                             prev_randao: new_block_prev_randao,
+                            extra_data: Default::default(), // Empty extra_data for non-genesis blocks
                         });
 
-                        // Update validator set if needed
-                        if let Some(ref mut manager) = validator_set_manager {
-                            update_validator_set(manager, state, height).await?;
-                        };
+                        let block_number = new_block_number;
+
+                        // Check if we're at an epoch boundary and update cached validator set
+                        if validator_executor.is_epoch_boundary(block_number + 1) {
+                            info!("🔄 Epoch boundary detected at block {}, updating validator set from StakeHub", block_number + 1);
+
+                            // Output current validator set BEFORE calling StakeHub
+                            info!("📊 Current validator set BEFORE StakeHub update:");
+                            let current_validator_set = state.get_current_validator_set();
+                            info!("   Validator count: {}", current_validator_set.validators.len());
+                            for (i, validator) in current_validator_set.validators.iter().enumerate() {
+                                info!("   Validator #{}: ConsensusAddress={:?}, OperatorAddress={:?}, VotingPower={}, PublicKey={:?}",
+                                      i + 1, validator.consensus_address, validator.operator_address, validator.voting_power, validator.public_key);
+                            }
+
+                            // Step 1: Read from StakeHub and update cache
+                            match validator_executor.get_validator_set_from_stake_hub().await {
+                                Ok(Some(validator_set)) => {
+                                    // Update the cached validator set
+                                    state.update_cached_validator_set(validator_set);
+
+                                    // Output current validator set AFTER update
+                                    info!("📊 Current validator set AFTER StakeHub update:");
+                                    let updated_validator_set = state.get_current_validator_set();
+                                    info!("   Validator count: {}", updated_validator_set.validators.len());
+                                    for (i, validator) in updated_validator_set.validators.iter().enumerate() {
+                                        info!("   Validator #{}: ConsensusAddress={:?}, OperatorAddress={:?}, VotingPower={}, PublicKey={:?}",
+                                              i + 1, validator.consensus_address, validator.operator_address, validator.voting_power, validator.public_key);
+                                    }
+                                }
+                                Ok(None) => {
+                                    warn!("⚠️ No validator set returned from StakeHub, keeping current cache");
+                                }
+                                Err(e) => {
+                                    error!("Failed to get validator set from StakeHub at epoch boundary: {}", e);
+                                    // Keep current cached validator set
+                                }
+                            }
+                        }
 
                         // And then we instruct consensus to start the next height
                         if reply
                             .send(Next::Start(
                                 state.current_height,
-                                state.get_latest_validator_set().clone(),
+                                state.get_current_validator_set().clone(),
                             ))
                             .is_err()
                         {
@@ -340,7 +396,7 @@ pub async fn run(
                         value_bytes,
                         reply,
                     } => {
-                        info!(%height, %round, "🟢🟢 Processing synced value");
+                        info!(%height, %round, "📨 Channel received ProcessSyncedValue...Processing synced value");
 
                         if let Some(value) = decode_value(value_bytes.clone()){
                             let block_bytes = value.extensions.clone();
@@ -370,7 +426,7 @@ pub async fn run(
                     // that was decided at some lower height. In that case, we fetch it from our store
                     // and send it to consensus.
                     AppMsg::GetDecidedValue { height, reply } => {
-                        info!(%height, "🟢🟢 GetDecidedValue");
+                        info!(%height, "📨 Channel received GetDecidedValue...");
                         let decided_value = state.get_decided_value(height).await;
 
                         let raw_decided_value = decided_value.map(|decided_value| RawDecidedValue {
@@ -386,8 +442,9 @@ pub async fn run(
                     // In order to figure out if we can help a peer that is lagging behind,
                     // the engine may ask us for the height of the earliest available value in our store.
                     AppMsg::GetHistoryMinHeight { reply } => {
-                        let min_height = state.get_earliest_height().await;
+                        info!("📨 Channel received GetHistoryMinHeight...");
 
+                        let min_height = state.get_earliest_height().await;
                         if reply.send(min_height).is_err() {
                             error!("Failed to send GetHistoryMinHeight reply");
                         }
@@ -423,34 +480,5 @@ pub async fn run(
     Err(eyre!("Consensus channel closed unexpectedly"))
 }
 
-pub async fn update_validator_set(
-    manager: &mut DynamicValidatorSetManager,
-    state: &mut State,
-    height: Height,
-) -> eyre::Result<()> {
-    // Check if validator set needs to be updated
-    if manager.should_update_validator_set(height.as_u64()).await {
-        match manager.update_validator_set(height.as_u64()).await {
-            Ok(validators) => {
-                // Convert validators from contract to Malachite format
-                let mut converted_validators = Vec::new();
-                for validator in validators {
-                    // Use real public key obtained from contract
-                    converted_validators.push(state.create_validator_from_contract_data(
-                        validator.operator_address,
-                        validator.voting_power,
-                        validator.public_key,
-                    ));
-                }
-                state.update_validator_set(height, converted_validators);
-            }
-            Err(e) => {
-                warn!(
-                    "Failed to update validator set from contract: {}, using cached set",
-                    e
-                );
-            }
-        }
-    }
-    Ok(())
-}
+// Validator set updates are now handled via deposit transactions
+// triggered at epoch boundaries in the AppMsg::Decided handler above
