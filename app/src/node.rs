@@ -6,6 +6,7 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use color_eyre::eyre;
+use tracing::info;
 use malachitebft_app_channel::app::events::{RxEvent, TxEvent};
 use malachitebft_app_channel::app::node::{
     CanGeneratePrivateKey, CanMakeConfig, CanMakeGenesis, CanMakePrivateKeyFile, EngineHandle,
@@ -118,11 +119,14 @@ impl Node for App {
         serde_json::from_str(&genesis).map_err(|e| e.into())
     }
 
-    async fn start(&self) -> eyre::Result<Handle> {
-        let config = self.load_config()?;
+    async fn start(&self) -> eyre::Result<Self::NodeHandle> {
+        // This is required by the Node trait
+        // But we'll use run() for the actual implementation
+        unimplemented!("Use run() instead")
+    }
 
-        let span = tracing::error_span!("node", moniker = %config.moniker);
-        let _enter = span.enter();
+    async fn run(self) -> eyre::Result<()> {
+        let config = self.load_config()?;
 
         let private_key_file = self.load_private_key_file()?;
         let private_key = self.load_private_key(private_key_file);
@@ -131,21 +135,24 @@ impl Node for App {
         let signing_provider = self.get_signing_provider(private_key);
         let ctx = TestContext::new();
 
-        let genesis = self.load_genesis()?;
-        let initial_validator_set = genesis.validator_set.clone();
+        // NEW: Load initial validator set from Reth's genesis extraData
+        // No longer need separate Malachite genesis.json!
+        info!("📖 Loading initial validator set from Reth genesis extraData...");
+        let initial_validator_set = self.load_initial_validator_set_from_reth(&config).await?;
+        info!("✅ Initial validator set loaded: {} validators", initial_validator_set.validators.len());
 
         let (mut channels, engine_handle) = malachitebft_app_channel::start_engine(
             ctx.clone(),
             self.clone(),
             config.clone(),
-            ProtobufCodec, // WAL codec
-            ProtobufCodec, // Network codec
+            ProtobufCodec,
+            ProtobufCodec,
             self.start_height,
-            initial_validator_set,
+            initial_validator_set.clone(),
         )
         .await?;
 
-        let tx_event = channels.events.clone();
+        let _tx_event = channels.events.clone();
 
         let registry = SharedRegistry::global().with_moniker(&config.moniker);
         let metrics = DbMetrics::register(&registry);
@@ -160,10 +167,8 @@ impl Node for App {
         let store = Store::open(self.get_home_dir().join("store.db"), metrics)?;
         let start_height = self.start_height.unwrap_or_default();
 
-        // Use prune configuration from config file
         let mut state = State::new(
-            genesis,
-            self.genesis_file.clone(),
+            initial_validator_set,
             ctx,
             signing_provider,
             address,
@@ -175,32 +180,12 @@ impl Node for App {
         let engine: Engine = {
             let engine_url: Url = {
                 let url = config.engine.engine_url.as_str();
-                if url.is_empty() {
-                    let engine_port = match config.moniker.as_str() {
-                        "test-0" => 8551,
-                        "test-1" => 18551,
-                        "test-2" => 28551,
-                        _ => 8551,
-                    };
-                    Url::parse(&format!("http://localhost:{engine_port}").as_str())?
-                } else {
-                    Url::parse(url)?
-                }
+                Url::parse(url)?
             };
-            let jwt_path = PathBuf::from_str(config.engine.wt_path.as_str())?; // Should be the same secret used by the execution client.
+            let jwt_path = PathBuf::from_str(config.engine.wt_path.as_str())?;
             let eth_url: Url = {
                 let url = config.engine.eth_url.as_str();
-                if url.is_empty() {
-                    let eth_port = match config.moniker.as_str() {
-                        "test-0" => 8545,
-                        "test-1" => 18545,
-                        "test-2" => 28545,
-                        _ => 8545,
-                    };
-                    Url::parse(&format!("http://localhost:{eth_port}"))?
-                } else {
-                    Url::parse(&url)?
-                }
+                Url::parse(&url)?
             };
             Engine::new(
                 EngineRPC::new(engine_url, jwt_path.as_path())?,
@@ -208,69 +193,137 @@ impl Node for App {
             )
         };
 
-        let span = tracing::error_span!("node", moniker = %config.moniker);
-        // SIGTERM
+        let validator_set_contract_address: Option<AlloyAddress> = config
+            .engine
+            .dynamic_validator_set
+            .contract_address
+            .as_ref()
+            .and_then(|addr| AlloyAddress::from_str(addr.as_str()).ok());
+
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
         let _ = tokio::spawn(async move {
             let mut sigterm = signal(SignalKind::terminate())
-                .map_err(|e| eyre::eyre!("Failed to register SIGTERM handler: {}", e))?;
+                .expect("Failed to register SIGTERM handler");
+            let mut sigint = signal(SignalKind::interrupt())
+                .expect("Failed to register SIGINT handler");
 
-            // waiting for SIGTERM
-            sigterm.recv().await;
-            tracing::info!("Received SIGTERM, initiating shutdown");
-
-            // send shutdown
-            let _ = shutdown_tx.send(());
-            Ok::<_, eyre::Error>(())
-        });
-
-        let app_handle = tokio::spawn(
-            async move {
-                // Validate dynamic validator set configuration
-                if let Err(e) = config.engine.dynamic_validator_set.validate() {
-                    tracing::error!("Invalid dynamic validator set configuration: {}", e);
-                    return;
+            tokio::select! {
+                _ = sigterm.recv() => {
+                    tracing::info!("Received SIGTERM signal, shutting down gracefully...");
                 }
-
-                // Parse validator set contract address
-                let validator_set_contract_address = if config.engine.dynamic_validator_set.enabled
-                {
-                    config
-                        .engine
-                        .dynamic_validator_set
-                        .contract_address
-                        .as_ref()
-                        .and_then(|addr| AlloyAddress::from_str(addr).ok().map(Address::from))
-                } else {
-                    None
-                };
-
-                if let Err(e) = crate::app::run(
-                    &mut state,
-                    &mut channels,
-                    engine,
-                    config.engine.block_interval,
-                    shutdown_rx,
-                    validator_set_contract_address,
-                )
-                .await
-                {
-                    tracing::error!(%e, "Application error");
+                _ = sigint.recv() => {
+                    tracing::info!("Received SIGINT signal, shutting down gracefully...");
                 }
             }
-            .instrument(span),
-        );
 
-        Ok(Handle {
-            app: app_handle,
-            engine: engine_handle,
-            tx_event,
-        })
+            let _ = shutdown_tx.send(()).await;
+        });
+
+        let span = tracing::error_span!("node", moniker = %config.moniker);
+        crate::app::run(
+            &mut state,
+            &mut channels,
+            engine,
+            config.engine.block_interval,
+            shutdown_rx,
+            validator_set_contract_address,
+        )
+        .instrument(span)
+        .await?;
+
+        engine_handle.actor.kill_and_wait(None).await?;
+
+        Ok(())
     }
+}
 
-    async fn run(self) -> eyre::Result<()> {
-        let handles = self.start().await?;
-        handles.app.await.map_err(Into::into)
+impl App {
+    /// NEW: Load initial validator set from Reth's genesis block extraData
+    /// This eliminates the need for a separate Malachite genesis.json file
+    async fn load_initial_validator_set_from_reth(&self, config: &Config) -> eyre::Result<ValidatorSet> {
+        use malachitebft_eth_engine::genesis::parse_validators_with_tendermint_keys;
+        use malachitebft_eth_types::Validator;
+        use malachitebft_eth_types::PublicKey;
+        use url::Url;
+
+        // Step 1: Get Reth RPC URL from config
+        let eth_url_str = config.engine.eth_url.clone();
+        let eth_url = Url::parse(&eth_url_str)?;
+        let eth_rpc = EthereumRPC::new(eth_url)?;
+
+        info!("📡 Connecting to Reth at {} to fetch genesis block...", eth_url_str);
+
+        // Step 2: Get genesis block from Reth
+        let genesis_block = eth_rpc
+            .get_block_by_number("0x0")
+            .await?
+            .ok_or_else(|| eyre::eyre!("Genesis block not found in Reth"))?;
+
+        info!("✅ Got genesis block from Reth");
+        info!("   Block hash: {}", genesis_block.block_hash);
+        info!("   ExtraData length: {} bytes", genesis_block.extra_data.len());
+        info!("   ExtraData hex: 0x{}...", hex::encode(&genesis_block.extra_data[..std::cmp::min(32, genesis_block.extra_data.len())]));
+
+        // Step 3: Parse extraData to get validators with Tendermint public keys
+        // Use bytes directly instead of converting to hex string
+        let validator_infos = parse_validators_with_tendermint_keys(&genesis_block.extra_data)?;
+
+        info!("✅ Parsed {} validators from extended extraData format", validator_infos.len());
+
+        // Step 4: Convert to Malachite ValidatorSet
+        let validators: Vec<Validator> = validator_infos
+            .into_iter()
+            .enumerate()
+            .map(|(i, info)| {
+                // Validate Tendermint public key length
+                if info.tendermint_pubkey.len() != 32 {
+                    return Err(eyre::eyre!(
+                        "Invalid Tendermint public key length for validator {}: {} bytes",
+                        info.address,
+                        info.tendermint_pubkey.len()
+                    ));
+                }
+
+                // Check if it's a placeholder (all zeros) - reject it
+                let is_placeholder = info.tendermint_pubkey.iter().all(|&b| b == 0);
+                if is_placeholder {
+                    return Err(eyre::eyre!(
+                        "Validator {} has invalid Tendermint public key (all zeros). \
+                         Please add real Tendermint public keys to validators.js. \
+                         You can derive them from priv_validator_key.json",
+                        info.address
+                    ));
+                }
+                
+                // Convert Tendermint public key to array
+                let pubkey_array: [u8; 32] = info.tendermint_pubkey
+                    .try_into()
+                    .map_err(|_| eyre::eyre!("Invalid public key length"))?;
+
+                // Log validator info
+                let pubkey_hex = hex::encode(&pubkey_array);
+                info!(
+                    "  Validator #{}: address={}, voting_power={}, pubkey={}",
+                    i + 1,
+                    info.address,
+                    info.voting_power,
+                    pubkey_hex
+                );
+
+                // Convert to Malachite PublicKey
+                let public_key = PublicKey::from_bytes(pubkey_array);
+
+                Ok(Validator::new(public_key, VotingPower::from(info.voting_power)))
+            })
+            .collect::<Result<Vec<_>, eyre::Report>>()?;
+
+        if validators.is_empty() {
+            return Err(eyre::eyre!("No validators found in genesis extraData"));
+        }
+
+        info!("🎉 Successfully built initial validator set with {} validators", validators.len());
+
+        Ok(ValidatorSet::new(validators))
     }
 }
 
