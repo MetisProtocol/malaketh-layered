@@ -24,11 +24,16 @@ color-eyre = { workspace = true }
 jsonwebtoken = "9"
 ethereum_serde_utils = "0.8"
 reqwest = { version = "0.12.2", default-features = false, features = ["blocking", "json", "stream", "rustls-tls", "native-tls-vendored"] }
+once_cell = "1.19"
 
 malachitebft-eth-types = { workspace = true }
 malachitebft-core-types = { workspace = true }
 alloy-rpc-types         = { workspace = true }
 alloy-rpc-types-engine  = { workspace = true }
-alloy-rpc-types-txpool  = { version = "0.11.1" }
+alloy-rpc-types-txpool  = { workspace = true }
+alloy-consensus         = { workspace = true }
+alloy-primitives        = { workspace = true }
 alloy-transport-http    = { version = "0.11.1", features = ["jwt-auth"] }
 alloy-sol-types         = { version = "1.0.0-rc.1" }
+alloy-dyn-abi           = { version = "0.8.15" }
+alloy-json-abi          = { version = "0.8.15", default-features = false }
