@@ -1,6 +1,6 @@
 all: clean
 	cargo build
-	cargo run --bin malachitebft-eth-utils genesis --validator-config nodes_config_bin/0/config/genesis.json
+	#cargo run --bin malachitebft-eth-utils genesis --validator-config nodes_config_bin/0/config/genesis.json
 	docker compose up -d
 #	./scripts/add_peers.sh 
 #	cp -fr nodes_config nodes	
@@ -14,7 +14,6 @@ stop:
 	docker compose down
 
 clean: clean-prometheus
-	rm -rf ./assets/genesis.json
 	rm -rf ./nodes
 	rm -rf ./rethdata
 	rm -rf ./monitoring/data-grafana
