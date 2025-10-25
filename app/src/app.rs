@@ -18,7 +18,6 @@ use malachitebft_app_channel::{AppMsg, Channels, NetworkMsg};
 use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::json_structures::ExecutionBlock;
 use malachitebft_eth_engine::validator_executor::ValidatorExecutor;
-use malachitebft_eth_engine::wallet::Wallet;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
 use malachitebft_eth_types::{Block, BlockHash, Height, TestContext};
 use tokio::sync::mpsc::Receiver;
@@ -39,10 +38,6 @@ pub async fn run(
         100, // epoch_length - TODO: make configurable
         21,  // max_validators - TODO: make configurable
     )?);
-
-    // Initialize Wallet for transaction signing
-    // TODO: Load validator keys from config
-    let _wallet = Arc::new(Mutex::new(Wallet::new()));
 
     // Get chain ID
     let chain_id_hex = engine.eth.get_chain_id().await?;
