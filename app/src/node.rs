@@ -6,7 +6,6 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use color_eyre::eyre;
-use tracing::info;
 use malachitebft_app_channel::app::events::{RxEvent, TxEvent};
 use malachitebft_app_channel::app::node::{
     CanGeneratePrivateKey, CanMakeConfig, CanMakeGenesis, CanMakePrivateKeyFile, EngineHandle,
@@ -16,18 +15,16 @@ use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::engine_rpc::EngineRPC;
 use malachitebft_eth_engine::ethereum_rpc::EthereumRPC;
 use rand::{CryptoRng, RngCore};
+use tracing::info;
 
 use malachitebft_app_channel::app::metrics::SharedRegistry;
 use malachitebft_app_channel::app::types::core::VotingPower;
 use malachitebft_app_channel::app::types::Keypair;
 
-// Use the same types used for integration tests.
-// A real application would use its own types and context instead.
 use crate::app_config::{load_config, Config};
 use crate::metrics::DbMetrics;
 use crate::state::State;
 use crate::store::Store;
-use alloy_primitives::Address as AlloyAddress;
 use malachitebft_eth_cli::metrics;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
 use malachitebft_eth_types::{
@@ -135,11 +132,16 @@ impl Node for App {
         let signing_provider = self.get_signing_provider(private_key);
         let ctx = TestContext::new();
 
-        // NEW: Load initial validator set from Reth's genesis extraData
+        // NEW: Load initial data from Reth's genesis extraData
         // No longer need separate Malachite genesis.json!
-        info!("📖 Loading initial validator set from Reth genesis extraData...");
-        let initial_validator_set = self.load_initial_validator_set_from_reth(&config).await?;
-        info!("✅ Initial validator set loaded: {} validators", initial_validator_set.validators.len());
+        info!("📖 Loading initial data from Reth genesis extraData...");
+        let (initial_validator_set, epoch_length) =
+            self.load_initial_data_from_reth(&config).await?;
+        info!(
+            "✅ Initial data loaded: {} validators, epoch_length: {} blocks",
+            initial_validator_set.validators.len(),
+            epoch_length
+        );
 
         let (mut channels, engine_handle) = malachitebft_app_channel::start_engine(
             ctx.clone(),
@@ -169,6 +171,7 @@ impl Node for App {
 
         let mut state = State::new(
             initial_validator_set,
+            epoch_length,
             ctx,
             signing_provider,
             address,
@@ -193,19 +196,12 @@ impl Node for App {
             )
         };
 
-        let validator_set_contract_address: Option<AlloyAddress> = config
-            .engine
-            .dynamic_validator_set
-            .contract_address
-            .as_ref()
-            .and_then(|addr| AlloyAddress::from_str(addr.as_str()).ok());
-
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
         let _ = tokio::spawn(async move {
-            let mut sigterm = signal(SignalKind::terminate())
-                .expect("Failed to register SIGTERM handler");
-            let mut sigint = signal(SignalKind::interrupt())
-                .expect("Failed to register SIGINT handler");
+            let mut sigterm =
+                signal(SignalKind::terminate()).expect("Failed to register SIGTERM handler");
+            let mut sigint =
+                signal(SignalKind::interrupt()).expect("Failed to register SIGINT handler");
 
             tokio::select! {
                 _ = sigterm.recv() => {
@@ -226,7 +222,6 @@ impl Node for App {
             engine,
             config.engine.block_interval,
             shutdown_rx,
-            validator_set_contract_address,
         )
         .instrument(span)
         .await?;
@@ -238,12 +233,15 @@ impl Node for App {
 }
 
 impl App {
-    /// NEW: Load initial validator set from Reth's genesis block extraData
+    /// NEW: Load initial data from Reth's genesis block extraData
     /// This eliminates the need for a separate Malachite genesis.json file
-    async fn load_initial_validator_set_from_reth(&self, config: &Config) -> eyre::Result<ValidatorSet> {
-        use malachitebft_eth_engine::genesis::parse_validators_with_tendermint_keys;
-        use malachitebft_eth_types::Validator;
+    async fn load_initial_data_from_reth(
+        &self,
+        config: &Config,
+    ) -> eyre::Result<(ValidatorSet, u64)> {
+        use malachitebft_eth_engine::genesis::parse_validators_from_extra_data;
         use malachitebft_eth_types::PublicKey;
+        use malachitebft_eth_types::Validator;
         use url::Url;
 
         // Step 1: Get Reth RPC URL from config
@@ -251,7 +249,10 @@ impl App {
         let eth_url = Url::parse(&eth_url_str)?;
         let eth_rpc = EthereumRPC::new(eth_url)?;
 
-        info!("📡 Connecting to Reth at {} to fetch genesis block...", eth_url_str);
+        info!(
+            "📡 Connecting to Reth at {} to fetch genesis block...",
+            eth_url_str
+        );
 
         // Step 2: Get genesis block from Reth
         let genesis_block = eth_rpc
@@ -261,25 +262,38 @@ impl App {
 
         info!("✅ Got genesis block from Reth");
         info!("   Block hash: {}", genesis_block.block_hash);
-        info!("   ExtraData length: {} bytes", genesis_block.extra_data.len());
-        info!("   ExtraData hex: 0x{}...", hex::encode(&genesis_block.extra_data[..std::cmp::min(32, genesis_block.extra_data.len())]));
+        info!(
+            "   ExtraData length: {} bytes",
+            genesis_block.extra_data.len()
+        );
+        info!(
+            "   ExtraData hex: 0x{}...",
+            hex::encode(
+                &genesis_block.extra_data[..std::cmp::min(32, genesis_block.extra_data.len())]
+            )
+        );
 
         // Step 3: Parse extraData to get validators with Tendermint public keys
         // Use bytes directly instead of converting to hex string
-        let validator_infos = parse_validators_with_tendermint_keys(&genesis_block.extra_data)?;
+        let (validator_infos, epoch_length) =
+            parse_validators_from_extra_data(&genesis_block.extra_data)?;
 
-        info!("✅ Parsed {} validators from extended extraData format", validator_infos.len());
+        info!(
+            "✅ Parsed {} validators from extended extraData format, epoch_length: {} blocks",
+            validator_infos.len(),
+            epoch_length
+        );
 
         // Step 4: Convert to Malachite ValidatorSet
         let validators: Vec<Validator> = validator_infos
             .into_iter()
             .enumerate()
-            .map(|(i, info)| {
+            .map(|(_i, info)| {
                 // Validate Tendermint public key length
                 if info.tendermint_pubkey.len() != 32 {
                     return Err(eyre::eyre!(
                         "Invalid Tendermint public key length for validator {}: {} bytes",
-                        info.address,
+                        info.consensus_address,
                         info.tendermint_pubkey.len()
                     ));
                 }
@@ -291,29 +305,23 @@ impl App {
                         "Validator {} has invalid Tendermint public key (all zeros). \
                          Please add real Tendermint public keys to validators.js. \
                          You can derive them from priv_validator_key.json",
-                        info.address
+                        info.consensus_address
                     ));
                 }
-                
+
                 // Convert Tendermint public key to array
-                let pubkey_array: [u8; 32] = info.tendermint_pubkey
+                let pubkey_array: [u8; 32] = info
+                    .tendermint_pubkey
                     .try_into()
                     .map_err(|_| eyre::eyre!("Invalid public key length"))?;
-
-                // Log validator info
-                let pubkey_hex = hex::encode(&pubkey_array);
-                info!(
-                    "  Validator #{}: address={}, voting_power={}, pubkey={}",
-                    i + 1,
-                    info.address,
-                    info.voting_power,
-                    pubkey_hex
-                );
 
                 // Convert to Malachite PublicKey
                 let public_key = PublicKey::from_bytes(pubkey_array);
 
-                Ok(Validator::new(public_key, VotingPower::from(info.voting_power)))
+                Ok(Validator::new(
+                    public_key,
+                    VotingPower::from(info.voting_power),
+                ))
             })
             .collect::<Result<Vec<_>, eyre::Report>>()?;
 
@@ -321,9 +329,12 @@ impl App {
             return Err(eyre::eyre!("No validators found in genesis extraData"));
         }
 
-        info!("🎉 Successfully built initial validator set with {} validators", validators.len());
+        info!(
+            "🎉 Successfully built initial validator set with {} validators",
+            validators.len()
+        );
 
-        Ok(ValidatorSet::new(validators))
+        Ok((ValidatorSet::new(validators), epoch_length))
     }
 }
 
