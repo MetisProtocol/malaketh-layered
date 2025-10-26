@@ -3,10 +3,8 @@ use color_eyre::eyre::{self, eyre};
 use ssz::{Decode, Encode};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
-use alloy_primitives::Address as AlloyAddress;
 use alloy_rpc_types_engine::ExecutionPayloadV3;
 use malachitebft_app_channel::app::engine::host::Next;
 use malachitebft_app_channel::app::streaming::StreamContent;
@@ -30,14 +28,9 @@ pub async fn run(
     engine: Engine,
     block_interval: Duration,
     mut shutdown_rx: Receiver<()>,
-    _validator_set_contract_address: Option<AlloyAddress>, // Unused parameter (kept for API compatibility)
 ) -> eyre::Result<()> {
     // Initialize ValidatorExecutor for on-chain validator management
-    let validator_executor = Arc::new(ValidatorExecutor::new(
-        Arc::new(engine.eth.clone()),
-        100, // epoch_length - TODO: make configurable
-        21,  // max_validators - TODO: make configurable
-    )?);
+    let validator_executor = Arc::new(ValidatorExecutor::new(Arc::new(engine.eth.clone()))?);
 
     // Get chain ID
     let chain_id_hex = engine.eth.get_chain_id().await?;
@@ -327,10 +320,9 @@ pub async fn run(
                         let block_number = new_block_number;
 
                         // Check if we're at an epoch boundary and update cached validator set
-                        if validator_executor.is_epoch_boundary(block_number + 1) {
-                            info!("🔄 Epoch boundary detected at block {}, updating validator set from StakeHub", block_number + 1);
+                        if validator_executor.is_epoch_boundary(block_number + 1, state.epoch_length).await {
+                            info!("🔄 Epoch boundary detected at block {}, checking for validator set update", block_number + 1);
 
-                            // Output current validator set BEFORE calling StakeHub
                             info!("📊 Current validator set BEFORE StakeHub update:");
                             let current_validator_set = state.get_current_validator_set();
                             info!("   Validator count: {}", current_validator_set.validators.len());
@@ -339,11 +331,10 @@ pub async fn run(
                                       i + 1, validator.consensus_address, validator.operator_address, validator.voting_power, validator.public_key);
                             }
 
-                            // Step 1: Read from StakeHub and update cache
                             match validator_executor.get_validator_set_from_stake_hub().await {
                                 Ok(Some(validator_set)) => {
                                     // Update the cached validator set
-                                    state.update_cached_validator_set(validator_set);
+                                    state.update_validator_set(validator_set);
 
                                     // Output current validator set AFTER update
                                     info!("📊 Current validator set AFTER StakeHub update:");
@@ -359,7 +350,15 @@ pub async fn run(
                                 }
                                 Err(e) => {
                                     error!("Failed to get validator set from StakeHub at epoch boundary: {}", e);
-                                    // Keep current cached validator set
+                                }
+                            }
+
+                            match validator_executor.get_epoch_length_from_stake_hub().await {
+                                Ok(new_epoch_length) => {
+                                    state.update_epoch_length(new_epoch_length);
+                                }
+                                Err(e) => {
+                                    error!("Failed to get epoch from StakeHub at epoch boundary: {}", e);
                                 }
                             }
                         }
