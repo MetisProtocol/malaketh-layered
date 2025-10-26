@@ -16,6 +16,7 @@ pub struct ValidatorElectionInfo {
     pub consensus_address: Address,
     pub voting_power: U256,
     pub operator_address: Address,
+    pub tendermint_pub_key: Vec<u8>,
 }
 
 /// Elected validators result
@@ -65,6 +66,26 @@ impl StakeHubClient {
             stake_hub_address,
             stake_hub_abi,
         })
+    }
+
+    /// Get epoch length from StakeHub contract
+    pub async fn get_epoch_length(&self) -> Result<u64> {
+        let function = self
+            .stake_hub_abi
+            .function("epochLength")
+            .unwrap()
+            .first()
+            .unwrap();
+
+        let call_data = function.abi_encode_input(&[])?;
+        let result = self
+            .eth_rpc
+            .eth_call(&self.stake_hub_address.to_string(), &call_data)
+            .await?;
+
+        let output = function.abi_decode_output(&result, false)?;
+        let epoch_length: U256 = output[0].as_uint().unwrap().0;
+        Ok(epoch_length.to::<u64>())
     }
 
     /// Get max elected validators from StakeHub contract
@@ -168,22 +189,21 @@ impl StakeHubClient {
             .into_iter()
             .zip(voting_powers.into_iter())
             .zip(operator_addresses.into_iter())
+            .zip(tendermint_pub_keys.into_iter())
             .map(
-                |((consensus_address, voting_power), operator_address)| ValidatorElectionInfo {
-                    consensus_address,
-                    voting_power,
-                    operator_address,
+                |(((consensus_address, voting_power), operator_address), tendermint_pub_key)| {
+                    ValidatorElectionInfo {
+                        consensus_address,
+                        voting_power,
+                        operator_address,
+                        tendermint_pub_key,
+                    }
                 },
             )
             .collect();
 
         // Apply the selection algorithm
-        let mut result = get_top_validators_by_voting_power(validators, max_elected);
-
-        // Add tendermint_pub_keys to the result
-        // Note: This is a simplified approach - in practice, you might want to match
-        // tendermint_pub_keys with the selected validators based on their addresses
-        result.tendermint_pub_keys = tendermint_pub_keys;
+        let result = get_top_validators_by_voting_power(validators, max_elected);
 
         Ok(result)
     }
@@ -212,13 +232,15 @@ fn get_top_validators_by_voting_power(
     let mut elected_validators = Vec::with_capacity(top_n);
     let mut elected_voting_powers = Vec::with_capacity(top_n);
     let mut elected_operator_addrs = Vec::with_capacity(top_n);
+    let mut elected_tendermint_pub_keys = Vec::with_capacity(top_n);
 
     for _ in 0..top_n {
         if let Some(validator) = validator_heap.pop() {
             elected_validators.push(validator.consensus_address);
-            // Use voting power directly (already in correct units for Malaketh-Layered)
-            elected_voting_powers.push(validator.voting_power.to::<u64>());
+            elected_voting_powers
+                .push((validator.voting_power / U256::from(10u64.pow(10))).to::<u64>());
             elected_operator_addrs.push(validator.operator_address);
+            elected_tendermint_pub_keys.push(validator.tendermint_pub_key);
         }
     }
 
@@ -226,6 +248,6 @@ fn get_top_validators_by_voting_power(
         consensus_addrs: elected_validators,
         voting_powers: elected_voting_powers,
         operator_addrs: elected_operator_addrs,
-        tendermint_pub_keys: Vec::new(), // Will be filled by the caller
+        tendermint_pub_keys: elected_tendermint_pub_keys,
     }
 }
