@@ -15,8 +15,8 @@ use malachitebft_app_channel::app::types::{LocallyProposedValue, PeerId, Propose
 use malachitebft_eth_engine::json_structures::ExecutionBlock;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
 use malachitebft_eth_types::{
-    Address, Ed25519Provider, Height, ProposalData, ProposalFin, ProposalInit,
-    ProposalPart, TestContext, ValidatorSet, Value,
+    Address, Ed25519Provider, Height, ProposalData, ProposalFin, ProposalInit, ProposalPart,
+    TestContext, ValidatorSet, Value,
 };
 
 use crate::app_config::PruneConfig;
@@ -60,7 +60,8 @@ pub struct State {
     pub start_time: Instant,
 
     // Cached validator set (initial set or updated from StakeHub)
-    pub cached_validator_set: ValidatorSet,
+    pub validator_set: ValidatorSet,
+    pub epoch_length: u64,
 }
 
 /// Represents errors that can occur during the verification of a proposal's signature.
@@ -92,6 +93,7 @@ impl State {
     /// Creates a new State instance with the given validator address and starting height
     pub fn new(
         initial_validator_set: ValidatorSet,
+        epoch_length: u64,
         ctx: TestContext,
         signing_provider: Ed25519Provider,
         address: Address,
@@ -117,7 +119,8 @@ impl State {
             txs_count: 0,
             chain_bytes: 0,
             start_time: Instant::now(),
-            cached_validator_set: initial_validator_set,
+            validator_set: initial_validator_set,
+            epoch_length,
         }
     }
 
@@ -453,12 +456,17 @@ impl State {
     /// Uses cached validator set from StakeHub or initial validator set
     pub fn get_current_validator_set(&self) -> ValidatorSet {
         // Return cached validator set (either from StakeHub or initial set)
-        self.cached_validator_set.clone()
+        self.validator_set.clone()
     }
 
     /// Updates the cached validator set from StakeHub
-    pub fn update_cached_validator_set(&mut self, validator_set: ValidatorSet) {
-        self.cached_validator_set = validator_set;
+    pub fn update_validator_set(&mut self, validator_set: ValidatorSet) {
+        self.validator_set = validator_set;
+    }
+
+    /// Updates the epoch length
+    pub fn update_epoch_length(&mut self, epoch_length: u64) {
+        self.epoch_length = epoch_length;
     }
 
     /// Verifies the signature of the proposal.
