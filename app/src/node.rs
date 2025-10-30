@@ -239,7 +239,6 @@ impl App {
         &self,
         config: &Config,
     ) -> eyre::Result<(ValidatorSet, u64)> {
-        use malachitebft_core_types::VotingPower;
         use malachitebft_eth_engine::genesis::parse_validators_from_extra_data;
         use malachitebft_eth_types::{Address, PublicKey, Validator};
         use url::Url;
