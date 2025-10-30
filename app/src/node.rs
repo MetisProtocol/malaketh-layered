@@ -239,9 +239,9 @@ impl App {
         &self,
         config: &Config,
     ) -> eyre::Result<(ValidatorSet, u64)> {
+        use malachitebft_core_types::VotingPower;
         use malachitebft_eth_engine::genesis::parse_validators_from_extra_data;
-        use malachitebft_eth_types::PublicKey;
-        use malachitebft_eth_types::Validator;
+        use malachitebft_eth_types::{Address, PublicKey, Validator};
         use url::Url;
 
         // Step 1: Get Reth RPC URL from config
@@ -284,7 +284,7 @@ impl App {
             epoch_length
         );
 
-        // Step 4: Convert to Malachite ValidatorSet
+        // Step 4: Convert to Malachite ValidatorSet (preserve operator_address from genesis)
         let validators: Vec<Validator> = validator_infos
             .into_iter()
             .enumerate()
@@ -318,7 +318,12 @@ impl App {
                 // Convert to Malachite PublicKey
                 let public_key = PublicKey::from_bytes(pubkey_array);
 
-                Ok(Validator::new(
+                // Build operator Address from alloy address bytes
+                let operator_bytes: [u8; 20] = info.operator_address.into();
+                let operator_address = Address::new(operator_bytes);
+
+                Ok(Validator::new_with_operator_addr(
+                    operator_address,
                     public_key,
                     VotingPower::from(info.voting_power),
                 ))
