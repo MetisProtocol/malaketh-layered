@@ -195,7 +195,7 @@ impl State {
 
         // Store the proposal and its data
         self.store.store_undecided_proposal(value.clone()).await?;
-        self.store_undecided_proposal_data(parts.height, self.current_round, data)
+        self.store_undecided_proposal_data(parts.height, parts.round, data)
             .await?;
 
         Ok(Some(value))
@@ -229,6 +229,15 @@ impl State {
     pub async fn get_block_data(&self, height: Height, round: Round) -> Option<Bytes> {
         self.store
             .get_block_data(height, round)
+            .await
+            .ok()
+            .flatten()
+    }
+
+    /// Retrieves a decided block data at the given height
+    pub async fn get_decided_block_data(&self, height: Height) -> Option<Bytes> {
+        self.store
+            .get_decided_block_data(height)
             .await
             .ok()
             .flatten()

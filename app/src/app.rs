@@ -66,9 +66,134 @@ pub async fn run(
                         engine.check_capabilities().await?;
 
                         // Get the latest block from the execution engine
-                        let latest_block = engine.eth.get_block_by_number("latest").await?.unwrap();
-                        info!("👉👉 The latest block from the execution engine: {:?}", latest_block.block_number);
-                        state.latest_block = Some(latest_block);
+                        let reth_latest_block = engine.eth.get_block_by_number("latest").await?
+                            .ok_or_else(|| eyre!("Reth returned None for latest block. Reth may not be initialized."))?;
+                        info!("👉👉 The latest block from the execution engine: block_number={}, block_hash={:?}, parent_hash={:?}",
+                            reth_latest_block.block_number, reth_latest_block.block_hash, reth_latest_block.parent_hash
+                        );
+
+                        // Restore latest_block from store if store has newer blocks
+                        // But also need to verify that the block exists in Reth!
+                        let latest_block = if let Some(max_decided_height) = state.max_decided_value_height().await {
+                            // Try to get decided block data from store at max_decided_height
+                            // If not found, it's a data integrity issue - panic immediately
+                            let Some(block_bytes) = state.get_decided_block_data(max_decided_height).await else {
+                                panic!(
+                                    "🔴 [ConsensusReady] Block not found in store at max_decided_height {}. This indicates data integrity issue.",
+                                    max_decided_height
+                                );
+                            };
+
+                            // Decode block data - if failed, it's data corruption - panic immediately
+                            let execution_payload = ExecutionPayloadV3::from_ssz_bytes(&block_bytes).unwrap_or_else(|e| {
+                                panic!(
+                                    "🔴 [ConsensusReady] Failed to decode block from store at height {}: {:?}. This indicates data corruption.",
+                                    max_decided_height, e
+                                );
+                            });
+
+                            let payload_inner = execution_payload.payload_inner.payload_inner;
+
+                            // Validate that store block_number >= reth_block_number
+                            // If store block_number < reth_block_number, it's unexpected - panic
+                            if payload_inner.block_number < reth_latest_block.block_number {
+                                panic!(
+                                    "🔴 [ConsensusReady] Store block_number {} is less than Reth block_number {}. This is unexpected - store should be ahead or equal.",
+                                    payload_inner.block_number, reth_latest_block.block_number
+                                );
+                            }
+
+                            // If store has newer blocks, resubmit missing blocks to Reth
+                            if payload_inner.block_number > reth_latest_block.block_number {
+                                // Resubmit missing blocks to Reth
+                                // If block_number > reth_latest_block.block_number, the block definitely doesn't exist in Reth
+                                // If any error occurs during resubmission, panic immediately to prevent inconsistent state
+                                let reth_latest_block_number = reth_latest_block.block_number;
+                                let store_latest_block_number = payload_inner.block_number;
+
+                                // Resubmit blocks in order
+                                // For decided blocks, height == block_number is guaranteed by design
+                                // Directly use Height::new(target_block_number) to lookup block data
+                                for target_block_number in (reth_latest_block_number + 1)..=store_latest_block_number {
+                                    let target_height = Height::new(target_block_number);
+
+                                    // Lookup decided block data at target_height
+                                    // If not found, it's a data integrity issue - panic immediately
+                                    let Some(block_bytes) = state.get_decided_block_data(target_height).await else {
+                                        panic!(
+                                            "🔴 [ConsensusReady] Block {} not found in store at height {}. This indicates data integrity issue.",
+                                            target_block_number, target_height
+                                        );
+                                    };
+
+                                    let execution_payload = ExecutionPayloadV3::from_ssz_bytes(&block_bytes).unwrap_or_else(|e| {
+                                        panic!(
+                                            "🔴 [ConsensusReady] Failed to decode block {} from store at height {}: {:?}",
+                                            target_block_number, target_height, e
+                                        );
+                                    });
+
+                                    // Validate block_number matches height (design guarantee)
+                                    // Only access what we need, avoid unnecessary clone
+                                    let block_hash = execution_payload.payload_inner.payload_inner.block_hash;
+                                    let block_number = execution_payload.payload_inner.payload_inner.block_number;
+                                    if block_number != target_block_number {
+                                        panic!(
+                                            "🔴 [ConsensusReady] Block number mismatch: expected {}, got {} at height {}. This indicates data corruption.",
+                                            target_block_number, block_number, target_height
+                                        );
+                                    }
+
+                                    // Resubmit block to Reth
+                                    let block: Block = execution_payload.clone().try_into_block()?;
+                                    let versioned_hashes: Vec<BlockHash> =
+                                        block.body.blob_versioned_hashes_iter().copied().collect();
+
+                                    match engine.notify_new_block(execution_payload, versioned_hashes).await {
+                                        Ok(payload_status) => {
+                                            if payload_status.status.is_invalid() {
+                                                panic!(
+                                                    "🔴 [ConsensusReady] Failed to resubmit block {} to Reth: invalid status {:?}",
+                                                    target_block_number, payload_status.status
+                                                );
+                                            }
+                                            engine.set_latest_forkchoice_state(block_hash).await.unwrap_or_else(|e| {
+                                                panic!(
+                                                    "🔴 [ConsensusReady] Failed to update forkchoice for block {}: {}",
+                                                    target_block_number, e
+                                                );
+                                            });
+                                            info!(
+                                                "✅ [ConsensusReady] Resubmitted block {} (height {}) to Reth",
+                                                target_block_number, target_height
+                                            );
+                                        }
+                                        Err(e) => {
+                                            panic!(
+                                                "🔴 [ConsensusReady] Failed to resubmit block {} to Reth: {}",
+                                                target_block_number, e
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Use store's latest block (after resubmission if needed)
+                            // Both cases (block_number > reth and block_number == reth) use the same ExecutionBlock
+                            Some(ExecutionBlock {
+                                block_hash: payload_inner.block_hash,
+                                block_number: payload_inner.block_number,
+                                parent_hash: payload_inner.parent_hash,
+                                timestamp: payload_inner.timestamp,
+                                prev_randao: payload_inner.prev_randao,
+                                extra_data: payload_inner.extra_data,
+                            })
+                        } else {
+                            // No decided blocks in store yet - use Reth's latest block
+                            None
+                        };
+
+                        state.latest_block = Some(latest_block.unwrap_or(reth_latest_block));
 
                         // We can simply respond by telling the engine to start consensus
                         // at the current height, which is initially 1
@@ -130,14 +255,16 @@ pub async fn run(
 
                         // We need to ask the execution engine for a new value to
                         // propose. Then we send it back to consensus.
-                        let latest_block = state.latest_block.as_ref().expect("Head block hash is not set").clone();
-                        let proposer = state.current_proposer.expect("Head block hash is not set");
+                        let latest_block = state.latest_block.as_ref()
+                            .ok_or_else(|| eyre!("latest_block is not set. ConsensusReady should initialize it."))?;
+                        let proposer = state.current_proposer
+                            .ok_or_else(|| eyre!("current_proposer is not set. StartedRound should set it."))?;
 
                         // Get the operator address for the proposer (consensus address)
                         let validator_set = state.get_current_validator_set();
                         let validator = validator_set.get_by_address(&proposer).expect("Proposer should be in validator set");
 
-                        let execution_payload = engine.generate_block(&latest_block,  validator.operator_address).await?;
+                        let execution_payload = engine.generate_block(latest_block, validator.operator_address).await?;
                         debug!("🌈 Got execution payload: {:?}", execution_payload);
 
                         // Store block in state and propagate to peers.
@@ -150,7 +277,8 @@ pub async fn run(
 
                         // When the node is not the proposer, store the block data,
                         // which will be passed to the execution client (EL) on commit.
-                        state.store_undecided_proposal_data(height, state.current_round, bytes.clone()).await?;
+                        // Use round parameter (should equal state.current_round per propose_value assertion)
+                        state.store_undecided_proposal_data(height, round, bytes.clone()).await?;
 
                         // Send it to consensus
                         if reply.send(proposal.clone()).is_err() {
@@ -186,7 +314,7 @@ pub async fn run(
                         );
 
                         let proposed_value = state.received_proposal_part(from, part).await?;
-                        if let Some(proposed_value) = proposed_value.clone() {
+                        if let Some(ref proposed_value) = proposed_value {
                             debug!("✅ Received complete proposal: {:?}", proposed_value);
                         }
 
@@ -216,7 +344,7 @@ pub async fn run(
                     // to commit for the current height, and will notify the application,
                     // providing it with a commit certificate which contains the ID of the value
                     // that was decided on as well as the set of commits for that value,
-                    // ie. the precommits together with their (aggregated) signatures.
+                    // i.e. the precommits together with their (aggregated) signatures.
                     AppMsg::Decided {
                         certificate, reply, ..
                     } => {
@@ -230,17 +358,17 @@ pub async fn run(
                         let block_bytes = state
                             .get_block_data(height, round)
                             .await
-                            .expect("certificate should have associated block data");
-                        debug!("🎁 block size: {:?}, height: {}", block_bytes.len(), height);
+                            .ok_or_else(|| eyre!("Block data not found for height={}, round={}. Certificate should have associated block data.", height, round))?;
 
                         // Decode bytes into execution payload (a block)
-                        let execution_payload = ExecutionPayloadV3::from_ssz_bytes(&block_bytes).unwrap();
-
+                        let execution_payload = ExecutionPayloadV3::from_ssz_bytes(&block_bytes)
+                            .map_err(|e| eyre!("Failed to decode execution payload for height={}, round={}: {:?}", height, round, e))?;
                         let parent_block_hash = execution_payload.payload_inner.payload_inner.parent_hash;
-
                         let new_block_hash = execution_payload.payload_inner.payload_inner.block_hash;
 
-                        assert_eq!(state.latest_block.as_ref().unwrap().block_hash, parent_block_hash);
+                        let latest_block = state.latest_block.as_ref()
+                            .ok_or_else(|| eyre!("latest_block is not set when processing Decided message at height={}", height))?;
+                        assert_eq!(latest_block.block_hash, parent_block_hash, "Parent block hash mismatch at height {}", height);
 
                         let new_block_timestamp = execution_payload.timestamp();
                         let new_block_number = execution_payload.payload_inner.payload_inner.block_number;
@@ -265,16 +393,11 @@ pub async fn run(
                             state.chain_bytes,
                             state.chain_bytes as f64 / elapsed_time.as_secs_f64(),
                         );
-
-                        let tx_count = execution_payload
-                            .payload_inner
-                            .payload_inner
-                            .transactions
-                            .len();
                         debug!("🦄 Block at height {height} contains {tx_count} transactions");
 
                         // Collect hashes from blob transactions
-                        let block: Block = execution_payload.clone().try_into_block().unwrap();
+                        let block: Block = execution_payload.clone().try_into_block()
+                            .map_err(|e| eyre!("Failed to convert ExecutionPayloadV3 to Block for height={}: {}", height, e))?;
                         let versioned_hashes: Vec<BlockHash> =
                             block.body.blob_versioned_hashes_iter().copied().collect();
 
@@ -294,6 +417,12 @@ pub async fn run(
                         // Notify the execution client (EL) of the new block.
                         // Update the execution head state to this block.
                         let latest_valid_hash = engine.set_latest_forkchoice_state(new_block_hash).await?;
+                        if latest_valid_hash != new_block_hash {
+                            return Err(eyre!(
+                                "Forkchoice update failed at height {}: expected {:?}, got {:?}",
+                                height, new_block_hash, latest_valid_hash
+                            ));
+                        }
                         debug!(
                             "🚀 Forkchoice updated to height {} for block hash={} and latest_valid_hash={}",
                             height, new_block_hash, latest_valid_hash
@@ -307,21 +436,19 @@ pub async fn run(
                         engine.sleep_for_block_interval(state.latest_block_timestamp, block_interval).await;
 
                         // Save the latest block
-                        state.latest_block_timestamp = new_block_timestamp*1000;
+                        state.latest_block_timestamp = new_block_timestamp * 1000;
                         state.latest_block = Some(ExecutionBlock {
                             block_hash: new_block_hash,
                             block_number: new_block_number,
-                            parent_hash: latest_valid_hash,
+                            parent_hash: parent_block_hash,
                             timestamp: new_block_timestamp,
                             prev_randao: new_block_prev_randao,
-                            extra_data: Default::default(), // Empty extra_data for non-genesis blocks
+                            extra_data: Default::default(),
                         });
 
-                        let block_number = new_block_number;
-
                         // Check if we're at an epoch boundary and update cached validator set
-                        if validator_executor.is_epoch_boundary(block_number + 1, state.epoch_length).await {
-                            info!("🔄 Epoch boundary detected at block {}, checking for validator set update", block_number + 1);
+                        if validator_executor.is_epoch_boundary(new_block_number + 1, state.epoch_length).await {
+                            info!("🔄 Epoch boundary detected at block {}, checking for validator set update", new_block_number + 1);
 
                             info!("📊 Current validator set BEFORE StakeHub update:");
                             let current_validator_set = state.get_current_validator_set();
@@ -392,25 +519,73 @@ pub async fn run(
                     } => {
                         info!(%height, %round, "📨 Channel received ProcessSyncedValue...Processing synced value");
 
-                        if let Some(value) = decode_value(value_bytes.clone()){
+                        let (should_store, value_and_bytes) = if let Some(value) = decode_value(value_bytes.clone()) {
                             let block_bytes = value.extensions.clone();
-                            let proposed_value = ProposedValue {
-                                height,
-                                round,
-                                valid_round: Round::Nil,
-                                proposer,
-                                value,
-                                validity: Validity::Valid,
-                            };
-                            state.store_undecided_proposal(proposed_value.clone()).await?;
-                            state.store_undecided_proposal_data(height, round, block_bytes).await?;
 
-                            // We send to consensus to see if it has been decided on
-                            if reply.send(Some(proposed_value)).is_err() {
-                                error!("Failed to send ProcessSyncedValue reply");
+                            // Validate synced block before storing
+                            // Decode block data to validate block_number and parent_hash
+                            match ExecutionPayloadV3::from_ssz_bytes(&block_bytes) {
+                                Ok(execution_payload) => {
+                                    let synced_block_number = execution_payload.payload_inner.payload_inner.block_number;
+                                    let synced_parent_hash = execution_payload.payload_inner.payload_inner.parent_hash;
+
+                                    // Validate block_number matches height
+                                    if synced_block_number != height.as_u64() {
+                                        error!(
+                                            "🔴 [ProcessSyncedValue REJECTED] BLOCK NUMBER MISMATCH: requested height={}, but received block_number={}. Rejecting synced block.",
+                                            height, synced_block_number
+                                        );
+                                        (false, None)
+                                    } else if let Some(ref latest_block) = state.latest_block {
+                                        // Validate parent_hash matches latest_block
+                                        if latest_block.block_hash != synced_parent_hash {
+                                            error!(
+                                                "🔴 [ProcessSyncedValue REJECTED] PARENT HASH MISMATCH: height={}, synced_parent_hash={:?}, but latest_block.block_hash={:?}. Rejecting synced block.",
+                                                height, synced_parent_hash, latest_block.block_hash
+                                            );
+                                            (false, None)
+                                        } else {
+                                            (true, Some((value, block_bytes)))
+                                        }
+                                    } else {
+                                        // latest_block is None, accept the synced block
+                                        (true, Some((value, block_bytes)))
+                                    }
+                                }
+                                Err(e) => {
+                                    error!(
+                                        "🔴 [ProcessSyncedValue REJECTED] Failed to decode synced block data for height={}, round={}: {:?}",
+                                        height, round, e
+                                    );
+                                    (false, None)
+                                }
                             }
-                        } else if reply.send(None).is_err() {
-                            error!("Failed to send ProcessSyncedValue reply");
+                        } else {
+                            (false, None)
+                        };
+
+                        if should_store {
+                            if let Some((value, block_bytes)) = value_and_bytes {
+                                let proposed_value = ProposedValue {
+                                    height,
+                                    round,
+                                    valid_round: Round::Nil,
+                                    proposer,
+                                    value,
+                                    validity: Validity::Valid,
+                                };
+                                state.store_undecided_proposal(proposed_value.clone()).await?;
+                                state.store_undecided_proposal_data(height, round, block_bytes).await?;
+
+                                // We send to consensus to see if it has been decided on
+                                if reply.send(Some(proposed_value)).is_err() {
+                                    error!("Failed to send ProcessSyncedValue reply");
+                                }
+                            }
+                        } else {
+                            if reply.send(None).is_err() {
+                                error!("Failed to send ProcessSyncedValue reply (rejected)");
+                            }
                         }
                     }
 
@@ -423,9 +598,18 @@ pub async fn run(
                         info!(%height, "📨 Channel received GetDecidedValue...");
                         let decided_value = state.get_decided_value(height).await;
 
-                        let raw_decided_value = decided_value.map(|decided_value| RawDecidedValue {
-                            certificate: decided_value.certificate,
-                            value_bytes: ProtobufCodec.encode(&decided_value.value).unwrap(),
+                        let raw_decided_value = decided_value.map(|decided_value| {
+                            let value_bytes = ProtobufCodec.encode(&decided_value.value)
+                                .unwrap_or_else(|e| {
+                                    panic!(
+                                        "🔴 [GetDecidedValue] Failed to encode decided value for height {}: {:?}",
+                                        height, e
+                                    );
+                                });
+                            RawDecidedValue {
+                                certificate: decided_value.certificate,
+                                value_bytes,
+                            }
                         });
 
                         if reply.send(raw_decided_value).is_err() {
