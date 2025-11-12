@@ -41,7 +41,7 @@ pub fn run_pubkey(cmd: PubkeyCmd) -> Result<()> {
     let hash = Keccak256::digest(&pk32);
     let addr_hex = format!("0x{}", hex::encode(&hash[..20]));
 
-    println!("{}", pk_hex);
-    println!("{}", addr_hex);
+    println!("consensus pubkey: {}", pk_hex);
+    println!("consensus address: {}", addr_hex);
     Ok(())
 }
