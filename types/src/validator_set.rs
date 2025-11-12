@@ -21,7 +21,7 @@ impl Validator {
     pub fn new(public_key: PublicKey, voting_power: VotingPower) -> Self {
         Self {
             consensus_address: Address::from_public_key(&public_key),
-            operator_address: Address::from_public_key(&public_key), // TODO should use operator pubkey
+            operator_address: Address::repeat_byte(0),
             public_key,
             voting_power,
         }
