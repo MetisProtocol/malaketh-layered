@@ -62,6 +62,10 @@ pub struct State {
     // Cached validator set (initial set or updated from StakeHub)
     pub validator_set: ValidatorSet,
     pub epoch_length: u64,
+
+    // Flag indicating whether validator_set needs to be refreshed from contract
+    // This is set to true when node restarts without a validator_set snapshot
+    pub need_refresh_validator_set: bool,
 }
 
 /// Represents errors that can occur during the verification of a proposal's signature.
@@ -121,6 +125,7 @@ impl State {
             start_time: Instant::now(),
             validator_set: initial_validator_set,
             epoch_length,
+            need_refresh_validator_set: false, // Default to false, set explicitly when needed
         }
     }
 
@@ -131,6 +136,11 @@ impl State {
 
     pub async fn max_decided_value_height(&self) -> Option<Height> {
         self.store.max_decided_value_height().await
+    }
+
+    /// Returns a reference to the store for snapshot operations
+    pub fn store(&self) -> &Store {
+        &self.store
     }
 
     /// Returns the earliest height available in the state
