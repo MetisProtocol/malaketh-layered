@@ -4,21 +4,20 @@ use color_eyre::eyre::{eyre, Result};
 use tracing::{info, trace};
 
 use malachitebft_app_channel::app::node::Node;
+use malachitebft_config::*;
 use malachitebft_eth_cli::args::{Args, Commands};
 use malachitebft_eth_cli::cmd::init::InitCmd;
 use malachitebft_eth_cli::cmd::start::StartCmd;
 use malachitebft_eth_cli::cmd::testnet::TestnetCmd;
-use malachitebft_eth_cli::{runtime, logging};
-use malachitebft_eth_types::Height;
-use malachitebft_config::*;
+use malachitebft_eth_cli::{logging, runtime};
 
 mod app;
+mod app_config;
 mod metrics;
 mod node;
 mod state;
 mod store;
 mod streaming;
-mod app_config;
 
 use node::App;
 
@@ -39,7 +38,7 @@ fn main() -> Result<()> {
     // Override logging configuration (if exists) with optional command-line parameters.
     let mut logging = LoggingConfig::default();
     if let Some(log_level) = args.log_level {
-       logging.log_level = log_level;
+        logging.log_level = log_level;
     }
     if let Some(log_format) = args.log_format {
         logging.log_format = log_format;
@@ -60,7 +59,7 @@ fn main() -> Result<()> {
     }
 }
 
-fn start(args: &Args, cmd: &StartCmd) -> Result<()> {
+fn start(args: &Args, _cmd: &StartCmd) -> Result<()> {
     // Load configuration file if it exists. Some commands do not require a configuration file.
     let config_file = args
         .get_config_file_path()
@@ -84,7 +83,6 @@ fn start(args: &Args, cmd: &StartCmd) -> Result<()> {
         home_dir: args.get_home_dir()?,
         genesis_file: args.get_genesis_file_path()?,
         private_key_file: args.get_priv_validator_key_file_path()?,
-        start_height: cmd.start_height.map(Height::new),
     };
 
     // Start the node
@@ -99,7 +97,6 @@ fn init(args: &Args, cmd: &InitCmd) -> Result<()> {
         home_dir: args.get_home_dir()?,
         genesis_file: args.get_genesis_file_path()?,
         private_key_file: args.get_priv_validator_key_file_path()?,
-        start_height: Some(Height::new(1)), // We always start at height 1
     };
 
     cmd.run(
@@ -118,7 +115,6 @@ fn testnet(args: &Args, cmd: &TestnetCmd) -> Result<()> {
         home_dir: args.get_home_dir()?,
         genesis_file: args.get_genesis_file_path()?,
         private_key_file: args.get_priv_validator_key_file_path()?,
-        start_height: Some(Height::new(1)), // We always start at height 1
     };
 
     cmd.run(&app, &args.get_home_dir()?)
