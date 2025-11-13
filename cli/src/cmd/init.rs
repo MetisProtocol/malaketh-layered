@@ -127,6 +127,10 @@ where
         save_config::<N>(config_file, config)?;
     }
 
+    // Generate private key
+    let private_keys = generate_private_keys(node, 1, false);
+    let private_key = &private_keys[0];
+
     // Save default priv_validator_key
     if priv_validator_key_file.exists() && !overwrite {
         warn!(
@@ -135,8 +139,7 @@ where
         );
     } else {
         info!(file = ?priv_validator_key_file, "Saving private key");
-        let private_keys = generate_private_keys(node, 1, false);
-        let priv_validator_key = node.make_private_key_file(private_keys[0].clone());
+        let priv_validator_key = node.make_private_key_file(private_key.clone());
         save_priv_validator_key(node, priv_validator_key_file, &priv_validator_key)?;
     }
 
@@ -147,13 +150,8 @@ where
             genesis_file.display()
         )
     } else {
-        let private_keys = generate_private_keys(node, 1, false);
-        let public_keys = private_keys
-            .iter()
-            .map(|pk| node.get_public_key(pk))
-            .collect();
-
-        let genesis = generate_genesis(node, public_keys, false);
+        let public_key = node.get_public_key(private_key);
+        let genesis = generate_genesis(node, vec![public_key], false);
         info!(file = ?genesis_file, "Saving test genesis");
         save_genesis(node, genesis_file, &genesis)?;
     }
