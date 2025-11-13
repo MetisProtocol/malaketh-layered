@@ -15,7 +15,7 @@ use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::engine_rpc::EngineRPC;
 use malachitebft_eth_engine::ethereum_rpc::EthereumRPC;
 use rand::{CryptoRng, RngCore};
-use tracing::info;
+use tracing::{error, info};
 
 use malachitebft_app_channel::app::metrics::SharedRegistry;
 use malachitebft_app_channel::app::types::core::VotingPower;
@@ -46,7 +46,6 @@ pub struct App {
     pub home_dir: PathBuf,
     pub genesis_file: PathBuf,
     pub private_key_file: PathBuf,
-    pub start_height: Option<Height>,
 }
 
 pub struct Handle {
@@ -132,30 +131,7 @@ impl Node for App {
         let signing_provider = self.get_signing_provider(private_key);
         let ctx = TestContext::new();
 
-        // NEW: Load initial data from Reth's genesis extraData
-        // No longer need separate Malachite genesis.json!
-        info!("📖 Loading initial data from Reth genesis extraData...");
-        let (initial_validator_set, epoch_length) =
-            self.load_initial_data_from_reth(&config).await?;
-        info!(
-            "✅ Initial data loaded: {} validators, epoch_length: {} blocks",
-            initial_validator_set.validators.len(),
-            epoch_length
-        );
-
-        let (mut channels, engine_handle) = malachitebft_app_channel::start_engine(
-            ctx.clone(),
-            self.clone(),
-            config.clone(),
-            ProtobufCodec,
-            ProtobufCodec,
-            self.start_height,
-            initial_validator_set.clone(),
-        )
-        .await?;
-
-        let _tx_event = channels.events.clone();
-
+        // Initialize metrics and store early (needed for smart initialization)
         let registry = SharedRegistry::global().with_moniker(&config.moniker);
         let metrics = DbMetrics::register(&registry);
 
@@ -167,8 +143,33 @@ impl Node for App {
         std::fs::create_dir_all(&db_dir)?;
 
         let store = Store::open(self.get_home_dir().join("store.db"), metrics)?;
-        let start_height = self.start_height.unwrap_or_default();
 
+        // Smart initialization: restore from store or load from Genesis
+        let (initial_validator_set, epoch_length, start_height, need_refresh) =
+            self.initialize_state(&store, &config).await?;
+
+        info!("🚀 Node initialization completed:");
+        info!("   Start height: {}", start_height);
+        info!("   Validators: {}", initial_validator_set.validators.len());
+        info!("   Epoch length: {}", epoch_length);
+        if need_refresh {
+            info!("   ⚠️ Validator set will be refreshed from contract after resubmit");
+        }
+
+        let (mut channels, engine_handle) = malachitebft_app_channel::start_engine(
+            ctx.clone(),
+            self.clone(),
+            config.clone(),
+            ProtobufCodec,
+            ProtobufCodec,
+            None, // start_height is determined automatically in ConsensusReady
+            initial_validator_set.clone(),
+        )
+        .await?;
+
+        let _tx_event = channels.events.clone();
+
+        // Create state with smart-initialized values
         let mut state = State::new(
             initial_validator_set,
             epoch_length,
@@ -179,6 +180,9 @@ impl Node for App {
             store,
             config.prune.clone(),
         );
+
+        // Set the refresh flag if needed
+        state.need_refresh_validator_set = need_refresh;
 
         let engine: Engine = {
             let engine_url: Url = {
@@ -339,6 +343,115 @@ impl App {
         );
 
         Ok((ValidatorSet::new(validators), epoch_length))
+    }
+
+    /// Smart initialization: restore from store or load from Genesis/contract
+    /// Returns: (validator_set, epoch_length, start_height, need_refresh)
+    async fn initialize_state(
+        &self,
+        store: &Store,
+        config: &Config,
+    ) -> eyre::Result<(ValidatorSet, u64, Height, bool)> {
+        use tracing::{error, warn};
+
+        // 1. Try to restore height from store
+        let current_height = store
+            .max_decided_value_height()
+            .await
+            .map(|h| h.increment())
+            .unwrap_or(Height::new(1));
+
+        info!("🔍 Checking storage for existing state...");
+        info!("   Current height from storage: {}", current_height);
+
+        // 2. Determine node state based on height
+        if current_height <= Height::new(1) {
+            // 2.1 New node: load from Genesis
+            info!("🆕 New node detected (height <= 1)");
+            info!("📖 Loading initial state from Reth genesis extraData...");
+
+            let (validator_set, epoch_length) = self.load_initial_data_from_reth(config).await?;
+
+            info!("✅ Initial state loaded from Genesis:");
+            info!("   Validators: {}", validator_set.validators.len());
+            info!("   Epoch length: {}", epoch_length);
+
+            // Save initial snapshot
+            use crate::store::ValidatorSetSnapshot;
+            let snapshot =
+                ValidatorSetSnapshot::new(Height::new(0), validator_set.clone(), epoch_length);
+
+            if let Err(e) = store.store_validator_snapshot(snapshot).await {
+                error!("Failed to save initial validator set snapshot: {}", e);
+            } else {
+                info!("💾 Initial snapshot saved to storage");
+            }
+
+            Ok((validator_set, epoch_length, Height::new(1), false))
+        } else {
+            // 2.2 Restarting node: try to restore from store
+            info!("🔄 Existing node detected (height = {})", current_height);
+            info!("📦 Attempting to restore from storage...");
+
+            if let Some(snapshot) = store.get_latest_validator_snapshot().await? {
+                info!("✅ Found validator set snapshot in storage:");
+                info!("   Snapshot height: {}", snapshot.height);
+                info!("   Validators: {}", snapshot.validator_set.validators.len());
+                info!("   Epoch length: {}", snapshot.epoch_length);
+
+                let blocks_since_snapshot = current_height.as_u64() - snapshot.height.as_u64();
+                info!("   Age: {} blocks", blocks_since_snapshot);
+
+                // Check if snapshot is too old (spans multiple epochs)
+                if blocks_since_snapshot <= snapshot.epoch_length * 2 {
+                    info!("✅ Snapshot is recent, using it directly");
+                    return Ok((
+                        snapshot.validator_set,
+                        snapshot.epoch_length,
+                        current_height,
+                        false, // No need to refresh
+                    ));
+                } else {
+                    warn!(
+                        "⚠️ Snapshot is old ({} blocks, {} epochs ago)",
+                        blocks_since_snapshot,
+                        blocks_since_snapshot / snapshot.epoch_length
+                    );
+                    warn!("Will refresh from contract after resubmit");
+                    return Ok((
+                        snapshot.validator_set,
+                        snapshot.epoch_length,
+                        current_height,
+                        true, // Need to refresh from contract
+                    ));
+                }
+            }
+
+            // 2.3 No snapshot found: this is likely a version upgrade
+            warn!(
+                "⚠️ Store has blocks at height {} but no validator_set snapshot!",
+                current_height
+            );
+            warn!("This may indicate:");
+            warn!("  1. Upgrade from old version without snapshot feature");
+            warn!("  2. Data corruption");
+            warn!("  3. Incomplete data restore");
+            warn!("Attempting automatic recovery...");
+
+            // Use Genesis validator_set temporarily, will be refreshed from contract
+            info!("📖 Loading Genesis validator_set as temporary placeholder...");
+            let (genesis_vs, genesis_epoch) = self.load_initial_data_from_reth(config).await?;
+
+            warn!("⚠️ Using Genesis validator_set temporarily");
+            warn!("⚠️ Will query StakeHub contract after resubmit to get current state");
+
+            Ok((
+                genesis_vs,
+                genesis_epoch,
+                current_height,
+                true, // Must refresh from contract
+            ))
+        }
     }
 }
 
