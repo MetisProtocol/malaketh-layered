@@ -4,39 +4,37 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use crate::app_config::{load_config, Config};
+use crate::metrics::DbMetrics;
+use crate::state::State;
+use crate::store::{Store, ValidatorSetSnapshot};
 use async_trait::async_trait;
 use color_eyre::eyre;
 use malachitebft_app_channel::app::events::{RxEvent, TxEvent};
+use malachitebft_app_channel::app::metrics::SharedRegistry;
 use malachitebft_app_channel::app::node::{
     CanGeneratePrivateKey, CanMakeConfig, CanMakeGenesis, CanMakePrivateKeyFile, EngineHandle,
     MakeConfigSettings, Node, NodeHandle,
 };
+use malachitebft_app_channel::app::types::{core::VotingPower, Keypair};
+use malachitebft_eth_cli::metrics;
 use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::engine_rpc::EngineRPC;
 use malachitebft_eth_engine::ethereum_rpc::EthereumRPC;
-use rand::{CryptoRng, RngCore};
-use tracing::{error, info};
-
-use malachitebft_app_channel::app::metrics::SharedRegistry;
-use malachitebft_app_channel::app::types::core::VotingPower;
-use malachitebft_app_channel::app::types::Keypair;
-
-use crate::app_config::{load_config, Config};
-use crate::metrics::DbMetrics;
-use crate::state::State;
-use crate::store::Store;
-use malachitebft_eth_cli::metrics;
+use malachitebft_eth_engine::genesis::parse_validators_from_extra_data;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
 use malachitebft_eth_types::{
     Address, Ed25519Provider, Genesis, Height, PrivateKey, PublicKey, TestContext, Validator,
     ValidatorSet,
 };
+use rand::{CryptoRng, RngCore};
 use tokio::{
     signal::unix::{signal, SignalKind},
     sync::mpsc,
     task::JoinHandle,
 };
 use tracing::Instrument;
+use tracing::{error, info, warn};
 use url::Url;
 
 /// Main application struct implementing the consensus node functionality
@@ -145,12 +143,12 @@ impl Node for App {
         let store = Store::open(self.get_home_dir().join("store.db"), metrics)?;
 
         // Smart initialization: restore from store or load from Genesis
-        let (initial_validator_set, epoch_length, start_height, need_refresh) =
+        let (validator_set, epoch_length, start_height, need_refresh) =
             self.initialize_state(&store, &config).await?;
 
         info!("🚀 Node initialization completed:");
         info!("   Start height: {}", start_height);
-        info!("   Validators: {}", initial_validator_set.validators.len());
+        info!("   Validators: {}", validator_set.validators.len());
         info!("   Epoch length: {}", epoch_length);
         if need_refresh {
             info!("   ⚠️ Validator set will be refreshed from contract after resubmit");
@@ -162,8 +160,8 @@ impl Node for App {
             config.clone(),
             ProtobufCodec,
             ProtobufCodec,
-            None, // start_height is determined automatically in ConsensusReady
-            initial_validator_set.clone(),
+            Some(start_height),
+            validator_set.clone(),
         )
         .await?;
 
@@ -171,7 +169,7 @@ impl Node for App {
 
         // Create state with smart-initialized values
         let mut state = State::new(
-            initial_validator_set,
+            validator_set,
             epoch_length,
             ctx,
             signing_provider,
@@ -237,16 +235,12 @@ impl Node for App {
 }
 
 impl App {
-    /// NEW: Load initial data from Reth's genesis block extraData
+    /// Load validator set and epoch from Reth's genesis block extraData
     /// This eliminates the need for a separate Malachite genesis.json file
-    async fn load_initial_data_from_reth(
+    async fn load_val_epoch_from_genesis(
         &self,
         config: &Config,
     ) -> eyre::Result<(ValidatorSet, u64)> {
-        use malachitebft_eth_engine::genesis::parse_validators_from_extra_data;
-        use malachitebft_eth_types::{Address, PublicKey, Validator};
-        use url::Url;
-
         // Step 1: Get Reth RPC URL from config
         let eth_url_str = config.engine.eth_url.clone();
         let eth_url = Url::parse(&eth_url_str)?;
@@ -280,12 +274,6 @@ impl App {
         // Use bytes directly instead of converting to hex string
         let (validator_infos, epoch_length) =
             parse_validators_from_extra_data(&genesis_block.extra_data)?;
-
-        info!(
-            "✅ Parsed {} validators from extended extraData format, epoch_length: {} blocks",
-            validator_infos.len(),
-            epoch_length
-        );
 
         // Step 4: Convert to Malachite ValidatorSet (preserve operator_address from genesis)
         let validators: Vec<Validator> = validator_infos
@@ -352,8 +340,6 @@ impl App {
         store: &Store,
         config: &Config,
     ) -> eyre::Result<(ValidatorSet, u64, Height, bool)> {
-        use tracing::{error, warn};
-
         // 1. Try to restore height from store
         let current_height = store
             .max_decided_value_height()
@@ -370,14 +356,13 @@ impl App {
             info!("🆕 New node detected (height <= 1)");
             info!("📖 Loading initial state from Reth genesis extraData...");
 
-            let (validator_set, epoch_length) = self.load_initial_data_from_reth(config).await?;
+            let (validator_set, epoch_length) = self.load_val_epoch_from_genesis(config).await?;
 
             info!("✅ Initial state loaded from Genesis:");
             info!("   Validators: {}", validator_set.validators.len());
             info!("   Epoch length: {}", epoch_length);
 
             // Save initial snapshot
-            use crate::store::ValidatorSetSnapshot;
             let snapshot =
                 ValidatorSetSnapshot::new(Height::new(0), validator_set.clone(), epoch_length);
 
@@ -423,7 +408,7 @@ impl App {
 
             // Use Genesis validator_set temporarily, will be refreshed from contract
             info!("📖 Loading Genesis validator_set as temporary placeholder...");
-            let (genesis_vs, genesis_epoch) = self.load_initial_data_from_reth(config).await?;
+            let (genesis_vs, genesis_epoch) = self.load_val_epoch_from_genesis(config).await?;
 
             warn!("⚠️ Using Genesis validator_set temporarily");
             warn!("⚠️ Will query StakeHub contract after resubmit to get current state");
