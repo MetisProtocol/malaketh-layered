@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
+use crate::store::ValidatorSetSnapshot;
 use alloy_rpc_types_engine::ExecutionPayloadV3;
 use malachitebft_app_channel::app::engine::host::Next;
 use malachitebft_app_channel::app::streaming::StreamContent;
@@ -506,13 +507,10 @@ pub async fn run(
                                       i + 1, validator.consensus_address, validator.operator_address, validator.voting_power, validator.public_key);
                             }
 
-                            let mut validator_set_updated = false;
-
                             match validator_executor.get_validator_set_from_stake_hub().await {
                                 Ok(Some(validator_set)) => {
                                     // Update the cached validator set
                                     state.update_validator_set(validator_set);
-                                    validator_set_updated = true;
 
                                     // Output current validator set AFTER update
                                     info!("📊 Current validator set AFTER StakeHub update:");
@@ -541,31 +539,24 @@ pub async fn run(
                             }
 
                             // Persist validator set snapshot to storage
-                            if validator_set_updated {
-                                use crate::store::ValidatorSetSnapshot;
+                            let snapshot = ValidatorSetSnapshot::new(
+                                Height::new(new_block_number),
+                                state.get_current_validator_set().clone(),
+                                state.epoch_length,
+                            );
 
-                                let snapshot = ValidatorSetSnapshot::new(
-                                    Height::new(new_block_number),
-                                    state.get_current_validator_set().clone(),
-                                    state.epoch_length,
-                                );
-
-                                if let Err(e) = state.store().store_validator_snapshot(snapshot).await {
-                                    error!("Failed to save validator set snapshot at height {}: {}", new_block_number, e);
-                                } else {
-                                    info!("💾 Saved validator set snapshot at height {}", new_block_number);
-                                }
+                            if let Err(e) = state.store().store_validator_snapshot(snapshot).await {
+                                error!("Failed to save validator set snapshot at height {}: {}", new_block_number, e);
+                            } else {
+                                info!("💾 Saved validator set snapshot at height {}", new_block_number);
                             }
                         }
 
                         // And then we instruct consensus to start the next height
-                        if reply
-                            .send(Next::Start(
+                        if reply.send(Next::Start(
                                 state.current_height,
                                 state.get_current_validator_set().clone(),
-                            ))
-                            .is_err()
-                        {
+                            )).is_err(){
                             error!("Failed to send Decided reply");
                         }
                     }
