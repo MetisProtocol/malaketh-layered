@@ -402,29 +402,12 @@ impl App {
                 let blocks_since_snapshot = current_height.as_u64() - snapshot.height.as_u64();
                 info!("   Age: {} blocks", blocks_since_snapshot);
 
-                // Check if snapshot is too old (spans multiple epochs)
-                if blocks_since_snapshot <= snapshot.epoch_length * 2 {
-                    info!("✅ Snapshot is recent, using it directly");
-                    return Ok((
-                        snapshot.validator_set,
-                        snapshot.epoch_length,
-                        current_height,
-                        false, // No need to refresh
-                    ));
-                } else {
-                    warn!(
-                        "⚠️ Snapshot is old ({} blocks, {} epochs ago)",
-                        blocks_since_snapshot,
-                        blocks_since_snapshot / snapshot.epoch_length
-                    );
-                    warn!("Will refresh from contract after resubmit");
-                    return Ok((
-                        snapshot.validator_set,
-                        snapshot.epoch_length,
-                        current_height,
-                        true, // Need to refresh from contract
-                    ));
-                }
+                return Ok((
+                    snapshot.validator_set,
+                    snapshot.epoch_length,
+                    current_height,
+                    false, // No need to refresh
+                ));
             }
 
             // 2.3 No snapshot found: this is likely a version upgrade
