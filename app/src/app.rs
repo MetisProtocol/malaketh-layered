@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
+use crate::store::ValidatorSetSnapshot;
 use alloy_rpc_types_engine::ExecutionPayloadV3;
 use malachitebft_app_channel::app::engine::host::Next;
 use malachitebft_app_channel::app::streaming::StreamContent;
@@ -50,15 +51,6 @@ pub async fn run(
                     // that Malachite is ready to start consensus
                     AppMsg::ConsensusReady { reply } => {
                         info!("📨 Channel received ConsensusReady...");
-                        if state.current_height <= Height::default() {
-                            let start_height = state
-                            .max_decided_value_height()
-                            .await
-                            .map(|height| height.increment())
-                            .unwrap_or_else(|| Height::new(1));
-
-                            state.set_current_height(start_height).await;
-                        }
                         info!("🟢🟢 Consensus is ready!!! start_height: {:?}", state.current_height);
 
                         // Node start-up: https://hackmd.io/@danielrachi/engine_api#Node-startup
@@ -196,7 +188,7 @@ pub async fn run(
                         state.latest_block = Some(latest_block.unwrap_or(reth_latest_block));
 
                         // We can simply respond by telling the engine to start consensus
-                        // at the current height, which is initially 1
+                        // at the current height with the (possibly refreshed) validator set
                         if reply.send(
                             (state.current_height, state.get_current_validator_set().clone())
                         ).is_err()
@@ -488,16 +480,26 @@ pub async fn run(
                                     error!("Failed to get epoch from StakeHub at epoch boundary: {}", e);
                                 }
                             }
+
+                            // Persist validator set snapshot to storage
+                            let snapshot = ValidatorSetSnapshot::new(
+                                Height::new(new_block_number),
+                                state.get_current_validator_set().clone(),
+                                state.epoch_length,
+                            );
+
+                            if let Err(e) = state.store().store_validator_snapshot(snapshot).await {
+                                error!("Failed to save validator set snapshot at height {}: {}", new_block_number, e);
+                            } else {
+                                info!("💾 Saved validator set snapshot at height {}", new_block_number);
+                            }
                         }
 
                         // And then we instruct consensus to start the next height
-                        if reply
-                            .send(Next::Start(
+                        if reply.send(Next::Start(
                                 state.current_height,
                                 state.get_current_validator_set().clone(),
-                            ))
-                            .is_err()
-                        {
+                            )).is_err(){
                             error!("Failed to send Decided reply");
                         }
                     }

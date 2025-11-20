@@ -4,39 +4,37 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use crate::app_config::{load_config, Config};
+use crate::metrics::DbMetrics;
+use crate::state::State;
+use crate::store::{Store, ValidatorSetSnapshot};
 use async_trait::async_trait;
 use color_eyre::eyre;
 use malachitebft_app_channel::app::events::{RxEvent, TxEvent};
+use malachitebft_app_channel::app::metrics::SharedRegistry;
 use malachitebft_app_channel::app::node::{
     CanGeneratePrivateKey, CanMakeConfig, CanMakeGenesis, CanMakePrivateKeyFile, EngineHandle,
     MakeConfigSettings, Node, NodeHandle,
 };
+use malachitebft_app_channel::app::types::{core::VotingPower, Keypair};
+use malachitebft_eth_cli::metrics;
 use malachitebft_eth_engine::engine::Engine;
 use malachitebft_eth_engine::engine_rpc::EngineRPC;
 use malachitebft_eth_engine::ethereum_rpc::EthereumRPC;
-use rand::{CryptoRng, RngCore};
-use tracing::info;
-
-use malachitebft_app_channel::app::metrics::SharedRegistry;
-use malachitebft_app_channel::app::types::core::VotingPower;
-use malachitebft_app_channel::app::types::Keypair;
-
-use crate::app_config::{load_config, Config};
-use crate::metrics::DbMetrics;
-use crate::state::State;
-use crate::store::Store;
-use malachitebft_eth_cli::metrics;
+use malachitebft_eth_engine::genesis::parse_validators_from_extra_data;
 use malachitebft_eth_types::codec::proto::ProtobufCodec;
 use malachitebft_eth_types::{
     Address, Ed25519Provider, Genesis, Height, PrivateKey, PublicKey, TestContext, Validator,
     ValidatorSet,
 };
+use rand::{CryptoRng, RngCore};
 use tokio::{
     signal::unix::{signal, SignalKind},
     sync::mpsc,
     task::JoinHandle,
 };
 use tracing::Instrument;
+use tracing::{error, info, warn};
 use url::Url;
 
 /// Main application struct implementing the consensus node functionality
@@ -46,7 +44,6 @@ pub struct App {
     pub home_dir: PathBuf,
     pub genesis_file: PathBuf,
     pub private_key_file: PathBuf,
-    pub start_height: Option<Height>,
 }
 
 pub struct Handle {
@@ -132,30 +129,7 @@ impl Node for App {
         let signing_provider = self.get_signing_provider(private_key);
         let ctx = TestContext::new();
 
-        // NEW: Load initial data from Reth's genesis extraData
-        // No longer need separate Malachite genesis.json!
-        info!("📖 Loading initial data from Reth genesis extraData...");
-        let (initial_validator_set, epoch_length) =
-            self.load_initial_data_from_reth(&config).await?;
-        info!(
-            "✅ Initial data loaded: {} validators, epoch_length: {} blocks",
-            initial_validator_set.validators.len(),
-            epoch_length
-        );
-
-        let (mut channels, engine_handle) = malachitebft_app_channel::start_engine(
-            ctx.clone(),
-            self.clone(),
-            config.clone(),
-            ProtobufCodec,
-            ProtobufCodec,
-            self.start_height,
-            initial_validator_set.clone(),
-        )
-        .await?;
-
-        let _tx_event = channels.events.clone();
-
+        // Initialize metrics and store early (needed for smart initialization)
         let registry = SharedRegistry::global().with_moniker(&config.moniker);
         let metrics = DbMetrics::register(&registry);
 
@@ -167,10 +141,32 @@ impl Node for App {
         std::fs::create_dir_all(&db_dir)?;
 
         let store = Store::open(self.get_home_dir().join("store.db"), metrics)?;
-        let start_height = self.start_height.unwrap_or_default();
 
+        // Smart initialization: restore from store or load from Genesis
+        let (validator_set, epoch_length, start_height) =
+            self.initialize_state(&store, &config).await?;
+
+        info!("🚀 Node initialization completed:");
+        info!("   Start height: {}", start_height);
+        info!("   Validators: {}", validator_set.validators.len());
+        info!("   Epoch length: {}", epoch_length);
+
+        let (mut channels, engine_handle) = malachitebft_app_channel::start_engine(
+            ctx.clone(),
+            self.clone(),
+            config.clone(),
+            ProtobufCodec,
+            ProtobufCodec,
+            Some(start_height),
+            validator_set.clone(),
+        )
+        .await?;
+
+        let _tx_event = channels.events.clone();
+
+        // Create state with smart-initialized values
         let mut state = State::new(
-            initial_validator_set,
+            validator_set,
             epoch_length,
             ctx,
             signing_provider,
@@ -233,16 +229,12 @@ impl Node for App {
 }
 
 impl App {
-    /// NEW: Load initial data from Reth's genesis block extraData
+    /// Load validator set and epoch from Reth's genesis block extraData
     /// This eliminates the need for a separate Malachite genesis.json file
-    async fn load_initial_data_from_reth(
+    async fn load_val_epoch_from_genesis(
         &self,
         config: &Config,
     ) -> eyre::Result<(ValidatorSet, u64)> {
-        use malachitebft_eth_engine::genesis::parse_validators_from_extra_data;
-        use malachitebft_eth_types::{Address, PublicKey, Validator};
-        use url::Url;
-
         // Step 1: Get Reth RPC URL from config
         let eth_url_str = config.engine.eth_url.clone();
         let eth_url = Url::parse(&eth_url_str)?;
@@ -276,12 +268,6 @@ impl App {
         // Use bytes directly instead of converting to hex string
         let (validator_infos, epoch_length) =
             parse_validators_from_extra_data(&genesis_block.extra_data)?;
-
-        info!(
-            "✅ Parsed {} validators from extended extraData format, epoch_length: {} blocks",
-            validator_infos.len(),
-            epoch_length
-        );
 
         // Step 4: Convert to Malachite ValidatorSet (preserve operator_address from genesis)
         let validators: Vec<Validator> = validator_infos
@@ -339,6 +325,77 @@ impl App {
         );
 
         Ok((ValidatorSet::new(validators), epoch_length))
+    }
+
+    /// Smart initialization: restore from store or load from Genesis
+    /// Returns: (validator_set, epoch_length, start_height)
+    async fn initialize_state(
+        &self,
+        store: &Store,
+        config: &Config,
+    ) -> eyre::Result<(ValidatorSet, u64, Height)> {
+        // 1. Try to restore height from store
+        let current_height = store
+            .max_decided_value_height()
+            .await
+            .map(|h| h.increment())
+            .unwrap_or(Height::new(1));
+
+        info!("🔍 Checking storage for existing state...");
+        info!("   Current height from storage: {}", current_height);
+
+        // 2. Determine node state based on height
+        if current_height <= Height::new(1) {
+            // 2.1 New node: load from Genesis
+            info!("🆕 New node detected (height <= 1)");
+            info!("📖 Loading initial state from Reth genesis extraData...");
+
+            let (validator_set, epoch_length) = self.load_val_epoch_from_genesis(config).await?;
+
+            info!("✅ Initial state loaded from Genesis:");
+            info!("   Validators: {}", validator_set.validators.len());
+            info!("   Epoch length: {}", epoch_length);
+
+            // Save initial snapshot
+            let snapshot =
+                ValidatorSetSnapshot::new(Height::new(0), validator_set.clone(), epoch_length);
+
+            if let Err(e) = store.store_validator_snapshot(snapshot).await {
+                error!("Failed to save initial validator set snapshot: {}", e);
+            } else {
+                info!("💾 Initial snapshot saved to storage");
+            }
+
+            Ok((validator_set, epoch_length, Height::new(1)))
+        } else {
+            // 2.2 Restarting node: try to restore from store
+            info!("🔄 Existing node detected (height = {})", current_height);
+            info!("📦 Attempting to restore from storage...");
+
+            if let Some(snapshot) = store.get_latest_validator_snapshot().await? {
+                info!("✅ Found validator set snapshot in storage:");
+                info!("   Snapshot height: {}", snapshot.height);
+                info!("   Validators: {}", snapshot.validator_set.validators.len());
+                info!("   Epoch length: {}", snapshot.epoch_length);
+
+                let blocks_since_snapshot = current_height.as_u64() - snapshot.height.as_u64();
+                info!("   Age: {} blocks", blocks_since_snapshot);
+
+                return Ok((
+                    snapshot.validator_set,
+                    snapshot.epoch_length,
+                    current_height,
+                ));
+            }
+
+            // 2.3 No snapshot found: data corruption
+            panic!(
+                "🔴 Store has blocks at height {} but no validator_set snapshot! \
+                This indicates data corruption or incomplete restore. \
+                Please restore from backup or resync from genesis.",
+                current_height
+            );
+        }
     }
 }
 

@@ -12,6 +12,8 @@ use redb::ReadableTable;
 use thiserror::Error;
 use tracing::error;
 
+use serde::{Deserialize, Serialize};
+
 use malachitebft_app_channel::app::types::codec::Codec;
 use malachitebft_app_channel::app::types::core::{CommitCertificate, Round};
 use malachitebft_app_channel::app::types::ProposedValue;
@@ -25,11 +27,33 @@ mod keys;
 use keys::{HeightKey, UndecidedValueKey};
 
 use crate::metrics::DbMetrics;
+use malachitebft_eth_types::ValidatorSet;
 
 #[derive(Clone, Debug)]
 pub struct DecidedValue {
     pub value: Value,
     pub certificate: CommitCertificate<TestContext>,
+}
+
+/// Snapshot of validator set at a specific height
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ValidatorSetSnapshot {
+    /// The height at which this snapshot was taken
+    pub height: Height,
+    /// The validator set at this height
+    pub validator_set: ValidatorSet,
+    /// The epoch length (number of blocks per epoch)
+    pub epoch_length: u64,
+}
+
+impl ValidatorSetSnapshot {
+    pub fn new(height: Height, validator_set: ValidatorSet, epoch_length: u64) -> Self {
+        Self {
+            height,
+            validator_set,
+            epoch_length,
+        }
+    }
 }
 
 fn decode_certificate(bytes: &[u8]) -> Result<CommitCertificate<TestContext>, ProtoError> {
@@ -64,6 +88,12 @@ pub enum StoreError {
 
     #[error("Failed to join on task: {0}")]
     TaskJoin(#[from] tokio::task::JoinError),
+
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+
+    #[error("Deserialization error: {0}")]
+    DeserializationError(String),
 }
 
 const CERTIFICATES_TABLE: redb::TableDefinition<HeightKey, Vec<u8>> =
@@ -80,6 +110,12 @@ const DECIDED_BLOCK_DATA_TABLE: redb::TableDefinition<HeightKey, Vec<u8>> =
 
 const UNDECIDED_BLOCK_DATA_TABLE: redb::TableDefinition<UndecidedValueKey, Vec<u8>> =
     redb::TableDefinition::new("undecided_block_data");
+
+const VALIDATOR_SNAPSHOTS_TABLE: redb::TableDefinition<HeightKey, Vec<u8>> =
+    redb::TableDefinition::new("validator_snapshots");
+
+const LATEST_VALIDATOR_SNAPSHOT_KEY: redb::TableDefinition<&str, Vec<u8>> =
+    redb::TableDefinition::new("latest_validator_snapshot");
 
 struct Db {
     db: redb::Database,
@@ -333,10 +369,62 @@ impl Db {
         let _ = tx.open_table(UNDECIDED_PROPOSALS_TABLE)?;
         let _ = tx.open_table(DECIDED_BLOCK_DATA_TABLE)?;
         let _ = tx.open_table(UNDECIDED_BLOCK_DATA_TABLE)?;
+        let _ = tx.open_table(VALIDATOR_SNAPSHOTS_TABLE)?;
+        let _ = tx.open_table(LATEST_VALIDATOR_SNAPSHOT_KEY)?;
 
         tx.commit()?;
 
         Ok(())
+    }
+
+    fn store_validator_snapshot(&self, snapshot: &ValidatorSetSnapshot) -> Result<(), StoreError> {
+        let start = Instant::now();
+
+        // Serialize snapshot
+        let snapshot_bytes = serde_json::to_vec(snapshot)
+            .map_err(|e| StoreError::SerializationError(e.to_string()))?;
+
+        let write_bytes = snapshot_bytes.len() as u64;
+
+        let tx = self.db.begin_write()?;
+        {
+            // Save snapshot at specific height
+            let mut snapshots_table = tx.open_table(VALIDATOR_SNAPSHOTS_TABLE)?;
+            snapshots_table.insert(&snapshot.height, snapshot_bytes.clone())?;
+
+            // Update latest snapshot pointer
+            let mut latest_table = tx.open_table(LATEST_VALIDATOR_SNAPSHOT_KEY)?;
+            latest_table.insert("latest", snapshot_bytes)?;
+        }
+        tx.commit()?;
+
+        self.metrics.observe_write_time(start.elapsed());
+        self.metrics.add_write_bytes(write_bytes);
+
+        Ok(())
+    }
+
+    fn get_latest_validator_snapshot(&self) -> Result<Option<ValidatorSetSnapshot>, StoreError> {
+        let start = Instant::now();
+
+        let tx = self.db.begin_read()?;
+        let table = tx.open_table(LATEST_VALIDATOR_SNAPSHOT_KEY)?;
+
+        let Some(snapshot_bytes) = table.get("latest")? else {
+            self.metrics.observe_read_time(start.elapsed());
+            return Ok(None);
+        };
+
+        let bytes = snapshot_bytes.value();
+        let read_bytes = bytes.len() as u64;
+
+        let snapshot: ValidatorSetSnapshot = serde_json::from_slice(&bytes)
+            .map_err(|e| StoreError::DeserializationError(e.to_string()))?;
+
+        self.metrics.observe_read_time(start.elapsed());
+        self.metrics.add_read_bytes(read_bytes);
+
+        Ok(Some(snapshot))
     }
 
     fn get_block_data(&self, height: Height, round: Round) -> Result<Option<Bytes>, StoreError> {
@@ -524,6 +612,25 @@ impl Store {
     pub async fn prune(&self, retain_height: Height) -> Result<Vec<Height>, StoreError> {
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || db.prune(retain_height)).await?
+    }
+
+    /// Stores a validator set snapshot at a specific height.
+    /// Called when the validator set changes (e.g., at epoch boundaries).
+    pub async fn store_validator_snapshot(
+        &self,
+        snapshot: ValidatorSetSnapshot,
+    ) -> Result<(), StoreError> {
+        let db = Arc::clone(&self.db);
+        tokio::task::spawn_blocking(move || db.store_validator_snapshot(&snapshot)).await?
+    }
+
+    /// Retrieves the latest validator set snapshot.
+    /// Called during node startup to restore the validator set.
+    pub async fn get_latest_validator_snapshot(
+        &self,
+    ) -> Result<Option<ValidatorSetSnapshot>, StoreError> {
+        let db = Arc::clone(&self.db);
+        tokio::task::spawn_blocking(move || db.get_latest_validator_snapshot()).await?
     }
 
     /// Retrieves an undecided proposal by its value ID.

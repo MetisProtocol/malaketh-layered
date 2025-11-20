@@ -9,8 +9,8 @@ use crate::metrics;
 
 #[derive(Parser, Debug, Clone, Default, PartialEq)]
 pub struct StartCmd {
-    #[clap(long)]
-    pub start_height: Option<u64>,
+    // start_height is no longer needed - the node automatically determines
+    // the starting height from storage or defaults to 1 for new nodes
 }
 
 impl StartCmd {
