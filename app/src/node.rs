@@ -143,16 +143,13 @@ impl Node for App {
         let store = Store::open(self.get_home_dir().join("store.db"), metrics)?;
 
         // Smart initialization: restore from store or load from Genesis
-        let (validator_set, epoch_length, start_height, need_refresh) =
+        let (validator_set, epoch_length, start_height) =
             self.initialize_state(&store, &config).await?;
 
         info!("🚀 Node initialization completed:");
         info!("   Start height: {}", start_height);
         info!("   Validators: {}", validator_set.validators.len());
         info!("   Epoch length: {}", epoch_length);
-        if need_refresh {
-            info!("   ⚠️ Validator set will be refreshed from contract after resubmit");
-        }
 
         let (mut channels, engine_handle) = malachitebft_app_channel::start_engine(
             ctx.clone(),
@@ -178,9 +175,6 @@ impl Node for App {
             store,
             config.prune.clone(),
         );
-
-        // Set the refresh flag if needed
-        state.need_refresh_validator_set = need_refresh;
 
         let engine: Engine = {
             let engine_url: Url = {
@@ -333,13 +327,13 @@ impl App {
         Ok((ValidatorSet::new(validators), epoch_length))
     }
 
-    /// Smart initialization: restore from store or load from Genesis/contract
-    /// Returns: (validator_set, epoch_length, start_height, need_refresh)
+    /// Smart initialization: restore from store or load from Genesis
+    /// Returns: (validator_set, epoch_length, start_height)
     async fn initialize_state(
         &self,
         store: &Store,
         config: &Config,
-    ) -> eyre::Result<(ValidatorSet, u64, Height, bool)> {
+    ) -> eyre::Result<(ValidatorSet, u64, Height)> {
         // 1. Try to restore height from store
         let current_height = store
             .max_decided_value_height()
@@ -372,7 +366,7 @@ impl App {
                 info!("💾 Initial snapshot saved to storage");
             }
 
-            Ok((validator_set, epoch_length, Height::new(1), false))
+            Ok((validator_set, epoch_length, Height::new(1)))
         } else {
             // 2.2 Restarting node: try to restore from store
             info!("🔄 Existing node detected (height = {})", current_height);
@@ -391,34 +385,16 @@ impl App {
                     snapshot.validator_set,
                     snapshot.epoch_length,
                     current_height,
-                    false, // No need to refresh
                 ));
             }
 
-            // 2.3 No snapshot found: this is likely a version upgrade
-            warn!(
-                "⚠️ Store has blocks at height {} but no validator_set snapshot!",
+            // 2.3 No snapshot found: data corruption
+            panic!(
+                "🔴 Store has blocks at height {} but no validator_set snapshot! \
+                This indicates data corruption or incomplete restore. \
+                Please restore from backup or resync from genesis.",
                 current_height
             );
-            warn!("This may indicate:");
-            warn!("  1. Upgrade from old version without snapshot feature");
-            warn!("  2. Data corruption");
-            warn!("  3. Incomplete data restore");
-            warn!("Attempting automatic recovery...");
-
-            // Use Genesis validator_set temporarily, will be refreshed from contract
-            info!("📖 Loading Genesis validator_set as temporary placeholder...");
-            let (genesis_vs, genesis_epoch) = self.load_val_epoch_from_genesis(config).await?;
-
-            warn!("⚠️ Using Genesis validator_set temporarily");
-            warn!("⚠️ Will query StakeHub contract after resubmit to get current state");
-
-            Ok((
-                genesis_vs,
-                genesis_epoch,
-                current_height,
-                true, // Must refresh from contract
-            ))
         }
     }
 }

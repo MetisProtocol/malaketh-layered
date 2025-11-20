@@ -187,63 +187,6 @@ pub async fn run(
 
                         state.latest_block = Some(latest_block.unwrap_or(reth_latest_block));
 
-                        // If validator_set needs refresh (version upgrade or old snapshot), query from contract
-                        if state.need_refresh_validator_set {
-                            info!("🔄 Refreshing validator set from StakeHub contract...");
-                            info!("   (Reth is now synced, safe to query contract)");
-
-                            // Query validator set from StakeHub
-                            match validator_executor.get_validator_set_from_stake_hub().await {
-                                Ok(Some(fresh_validator_set)) => {
-                                    info!("✅ Successfully retrieved validator set from contract:");
-                                    info!("   Validators: {}", fresh_validator_set.validators.len());
-                                    for (i, validator) in fresh_validator_set.validators.iter().enumerate() {
-                                        info!("   Validator #{}: ConsensusAddress={:?}, OperatorAddress={:?}, VotingPower={}",
-                                              i + 1, validator.consensus_address, validator.operator_address, validator.voting_power);
-                                    }
-
-                                    // Update state
-                                    state.update_validator_set(fresh_validator_set.clone());
-
-                                    // Also update epoch_length
-                                    if let Ok(fresh_epoch_length) = validator_executor.get_epoch_length_from_stake_hub().await {
-                                        state.update_epoch_length(fresh_epoch_length);
-                                        info!("✅ Updated epoch length: {}", fresh_epoch_length);
-                                    }
-
-                                    // Save snapshot for future restarts
-                                    use crate::store::ValidatorSetSnapshot;
-                                    let snapshot_height = if state.current_height > Height::new(1) {
-                                        state.current_height.decrement().unwrap_or(Height::new(0))
-                                    } else {
-                                        Height::new(0)
-                                    };
-                                    let snapshot = ValidatorSetSnapshot::new(
-                                        snapshot_height,
-                                        fresh_validator_set,
-                                        state.epoch_length,
-                                    );
-
-                                    if let Err(e) = state.store().store_validator_snapshot(snapshot).await {
-                                        error!("Failed to save refreshed validator set snapshot: {}", e);
-                                    } else {
-                                        info!("💾 Saved refreshed validator set snapshot");
-                                    }
-
-                                    // Clear the refresh flag
-                                    state.need_refresh_validator_set = false;
-                                }
-                                Ok(None) => {
-                                    error!("⚠️ StakeHub contract returned no validator set");
-                                    error!("⚠️ Continuing with current validator set (may be outdated)");
-                                }
-                                Err(e) => {
-                                    error!("❌ Failed to query validator set from contract: {}", e);
-                                    error!("⚠️ Continuing with current validator set (may be outdated)");
-                                }
-                            }
-                        }
-
                         // We can simply respond by telling the engine to start consensus
                         // at the current height with the (possibly refreshed) validator set
                         if reply.send(
