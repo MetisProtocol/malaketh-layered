@@ -1,4 +1,5 @@
 use crate::PubkeyCmd;
+use base64::{engine::general_purpose, Engine};
 use color_eyre::eyre::Result;
 use ed25519_consensus::SigningKey;
 use serde::Deserialize;
@@ -23,12 +24,12 @@ pub fn run_pubkey(cmd: PubkeyCmd) -> Result<()> {
 
     // If file contains pub_key.value, use it; otherwise derive from private key seed
     let pk32: [u8; 32] = if let Some(pk) = key_file.pub_key {
-        let bytes = base64::decode(pk.value)?;
+        let bytes = general_purpose::STANDARD.decode(pk.value)?;
         let mut arr = [0u8; 32];
         arr.copy_from_slice(&bytes[..32]);
         arr
     } else {
-        let sk = base64::decode(key_file.value)?; // 32 bytes seed
+        let sk = general_purpose::STANDARD.decode(key_file.value)?; // 32 bytes seed
         let sk = SigningKey::try_from(&sk[..32]).expect("invalid ed25519 private key");
         sk.verification_key().to_bytes()
     };

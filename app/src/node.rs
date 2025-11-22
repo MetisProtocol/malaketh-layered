@@ -34,7 +34,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::Instrument;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use url::Url;
 
 /// Main application struct implementing the consensus node functionality
