@@ -35,10 +35,8 @@ impl Engine {
     ) -> eyre::Result<BlockHash> {
         debug!("🟠 set_latest_forkchoice_state: {:?}", head_block_hash);
 
-        let ForkchoiceUpdated {
-            payload_status,
-            payload_id,
-        } = self.api.forkchoice_updated(head_block_hash, None).await?;
+        let ForkchoiceUpdated { payload_status, payload_id } =
+            self.api.forkchoice_updated(head_block_hash, None).await?;
 
         assert!(payload_id.is_none(), "Payload ID should be None!");
 
@@ -48,12 +46,10 @@ impl Engine {
             PayloadStatusEnum::Valid => Ok(payload_status.latest_valid_hash.unwrap()),
             PayloadStatusEnum::Syncing if payload_status.latest_valid_hash.is_none() => {
                 // From the Engine API spec:
-                // 8. Client software MUST respond to this method call in the
-                //    following way:
+                // 8. Client software MUST respond to this method call in the following way:
                 //   * {payloadStatus: {status: SYNCING, latestValidHash: null,
-                //   * validationError: null}, payloadId: null} if
-                //     forkchoiceState.headBlockHash references an unknown
-                //     payload or a payload that can't be validated because
+                //   * validationError: null}, payloadId: null} if forkchoiceState.headBlockHash
+                //     references an unknown payload or a payload that can't be validated because
                 //     requisite data for the validation is missing
                 Err(eyre::eyre!(
                     "headBlockHash={:?} references an unknown payload or a payload that can't be validated",
@@ -78,11 +74,12 @@ impl Engine {
             // It should be greater than that of forkchoiceState.headBlockHash.
             timestamp: std::cmp::max(latest_block.timestamp + 1, self._timestamp_now()),
 
-            // prev_randao comes from the previous beacon block and influences the proposer selection mechanism.
-            // prev_randao is derived from the RANDAO mix (randomness accumulator) of the parent beacon block.
-            // The beacon chain generates this value using aggregated validator signatures over time.
-            // The mix_hash field in the generated block will be equal to prev_randao.
-            // TODO: generate value according to spec.
+            // prev_randao comes from the previous beacon block and influences the proposer
+            // selection mechanism. prev_randao is derived from the RANDAO mix
+            // (randomness accumulator) of the parent beacon block. The beacon chain
+            // generates this value using aggregated validator signatures over time. The
+            // mix_hash field in the generated block will be equal to prev_randao. TODO:
+            // generate value according to spec.
             prev_randao: latest_block.prev_randao,
 
             suggested_fee_recipient: operator_address.to_alloy_address(),
@@ -93,13 +90,8 @@ impl Engine {
             // Cannot be None in V3.
             parent_beacon_block_root: Some(block_hash),
         };
-        let ForkchoiceUpdated {
-            payload_status,
-            payload_id,
-        } = self
-            .api
-            .forkchoice_updated(block_hash, Some(payload_attributes))
-            .await?;
+        let ForkchoiceUpdated { payload_status, payload_id } =
+            self.api.forkchoice_updated(block_hash, Some(payload_attributes)).await?;
 
         assert_eq!(payload_status.latest_valid_hash, Some(block_hash));
 
@@ -121,9 +113,7 @@ impl Engine {
         versioned_hashes: Vec<B256>,
     ) -> eyre::Result<PayloadStatus> {
         let parent_block_hash = execution_payload.payload_inner.payload_inner.parent_hash;
-        self.api
-            .new_payload(execution_payload, versioned_hashes, parent_block_hash)
-            .await
+        self.api.new_payload(execution_payload, versioned_hashes, parent_block_hash).await
     }
 
     pub async fn sleep_for_block_interval(
@@ -161,9 +151,6 @@ impl Engine {
     }
 
     fn _timestamp_now_millis(&self) -> u64 {
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64
+        SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64
     }
 }

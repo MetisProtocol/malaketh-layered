@@ -2,8 +2,7 @@ use bytes::Bytes;
 use malachitebft_core_types::{NilOrVal, Round, SignedExtension, VoteType};
 use malachitebft_proto::{Error as ProtoError, Protobuf};
 
-use crate::proto;
-use crate::{Address, Height, TestContext, ValueId};
+use crate::{proto, Address, Height, TestContext, ValueId};
 
 pub use malachitebft_core_types::Extension;
 
@@ -25,14 +24,7 @@ impl Vote {
         value: NilOrVal<ValueId>,
         validator_address: Address,
     ) -> Self {
-        Self {
-            typ: VoteType::Prevote,
-            height,
-            round,
-            value,
-            validator_address,
-            extension: None,
-        }
+        Self { typ: VoteType::Prevote, height, round, value, validator_address, extension: None }
     }
 
     pub fn new_precommit(
@@ -90,10 +82,7 @@ impl malachitebft_core_types::Vote<TestContext> for Vote {
     }
 
     fn extend(self, extension: SignedExtension<TestContext>) -> Self {
-        Self {
-            extension: Some(extension),
-            ..self
-        }
+        Self { extension: Some(extension), ..self }
     }
 }
 

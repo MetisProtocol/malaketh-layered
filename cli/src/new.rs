@@ -1,9 +1,7 @@
 //! key and configuration generation
-use rand::prelude::StdRng;
-use rand::rngs::OsRng;
-use rand::{Rng, SeedableRng};
+use rand::{prelude::StdRng, rngs::OsRng, Rng, SeedableRng};
 
-use malachitebft_app::node::{Node, CanGeneratePrivateKey, CanMakeGenesis};
+use malachitebft_app::node::{CanGeneratePrivateKey, CanMakeGenesis, Node};
 use malachitebft_core_types::{PrivateKey, PublicKey};
 
 const MIN_VOTING_POWER: u64 = 1;
@@ -20,13 +18,9 @@ where
 {
     if deterministic {
         let mut rng = StdRng::seed_from_u64(0x42);
-        (0..size)
-            .map(|_| node.generate_private_key(&mut rng))
-            .collect()
+        (0..size).map(|_| node.generate_private_key(&mut rng)).collect()
     } else {
-        (0..size)
-            .map(|_| node.generate_private_key(OsRng))
-            .collect()
+        (0..size).map(|_| node.generate_private_key(OsRng)).collect()
     }
 }
 
@@ -42,9 +36,7 @@ where
 {
     let validators: Vec<_> = if deterministic {
         let mut rng = StdRng::seed_from_u64(0x42);
-        pks.into_iter()
-            .map(|pk| (pk, rng.gen_range(MIN_VOTING_POWER..=MAX_VOTING_POWER)))
-            .collect()
+        pks.into_iter().map(|pk| (pk, rng.gen_range(MIN_VOTING_POWER..=MAX_VOTING_POWER))).collect()
     } else {
         pks.into_iter()
             .map(|pk| (pk, OsRng.gen_range(MIN_VOTING_POWER..=MAX_VOTING_POWER)))

@@ -2,9 +2,7 @@ use color_eyre::eyre;
 use reqwest::{header::CONTENT_TYPE, Client, Url};
 use serde::de::DeserializeOwned;
 use serde_json::json;
-use std::collections::HashSet;
-use std::path::Path;
-use std::time::Duration;
+use std::{collections::HashSet, path::Path, time::Duration};
 
 use alloy_rpc_types_engine::{
     ExecutionPayloadEnvelopeV3, ExecutionPayloadV3, ForkchoiceState, ForkchoiceUpdated,
@@ -13,8 +11,7 @@ use alloy_rpc_types_engine::{
 
 use malachitebft_eth_types::{BlockHash, B256};
 
-use crate::auth::Auth;
-use crate::json_structures::*;
+use crate::{auth::Auth, json_structures::*};
 
 pub const ENGINE_NEW_PAYLOAD_V1: &str = "engine_newPayloadV1";
 pub const ENGINE_NEW_PAYLOAD_V2: &str = "engine_newPayloadV2";
@@ -114,12 +111,7 @@ impl EngineRPC {
         params: serde_json::Value,
         timeout: Duration,
     ) -> eyre::Result<D> {
-        let body = JsonRequestBody {
-            jsonrpc: "2.0",
-            method,
-            params,
-            id: json!(1),
-        };
+        let body = JsonRequestBody { jsonrpc: "2.0", method, params, id: json!(1) };
         let token = self.auth.generate_token()?;
         let request = self
             .client
@@ -131,11 +123,7 @@ impl EngineRPC {
         let body: JsonResponseBody = request.send().await?.error_for_status()?.json().await?;
 
         if let Some(error) = body.error {
-            Err(eyre::eyre!(
-                "Server Message: code: {}, message: {}",
-                error.code,
-                error.message,
-            ))
+            Err(eyre::eyre!("Server Message: code: {}, message: {}", error.code, error.message,))
         } else {
             serde_json::from_value(body.result).map_err(Into::into)
         }
@@ -174,7 +162,8 @@ impl EngineRPC {
     /// Notify that a fork choice has been updated, to set the head of the chain
     /// - head_block_hash: The block hash of the head of the chain
     /// - safe_block_hash: The block hash of the most recent "safe" block (can be same as head)
-    /// - finalized_block_hash: The block hash of the highest finalized block (can be 0x0 for genesis)
+    /// - finalized_block_hash: The block hash of the highest finalized block (can be 0x0 for
+    ///   genesis)
     pub async fn forkchoice_updated(
         &self,
         head_block_hash: BlockHash,
@@ -198,11 +187,7 @@ impl EngineRPC {
         payload_id: AlloyPayloadId,
     ) -> eyre::Result<ExecutionPayloadV3> {
         let response: ExecutionPayloadEnvelopeV3 = self
-            .rpc_request(
-                ENGINE_GET_PAYLOAD_V3,
-                json!([payload_id]),
-                ENGINE_GET_PAYLOAD_TIMEOUT,
-            )
+            .rpc_request(ENGINE_GET_PAYLOAD_V3, json!([payload_id]), ENGINE_GET_PAYLOAD_TIMEOUT)
             .await?;
         Ok(response.execution_payload)
     }
@@ -215,7 +200,6 @@ impl EngineRPC {
     ) -> eyre::Result<PayloadStatus> {
         let payload = JsonExecutionPayloadV3::from(execution_payload);
         let params = json!([payload, versioned_hashes, parent_block_hash]);
-        self.rpc_request(ENGINE_NEW_PAYLOAD_V3, params, ENGINE_NEW_PAYLOAD_TIMEOUT)
-            .await
+        self.rpc_request(ENGINE_NEW_PAYLOAD_V3, params, ENGINE_NEW_PAYLOAD_TIMEOUT).await
     }
 }

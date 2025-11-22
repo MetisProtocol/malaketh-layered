@@ -1,7 +1,6 @@
 use std::io;
 
-use axum::routing::get;
-use axum::Router;
+use axum::{routing::get, Router};
 use tokio::net::{TcpListener, ToSocketAddrs};
 use tracing::{error, info};
 

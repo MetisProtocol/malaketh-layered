@@ -1,10 +1,6 @@
 #![allow(clippy::result_large_err)]
 
-use std::mem::size_of;
-use std::ops::RangeBounds;
-use std::path::Path;
-use std::sync::Arc;
-use std::time::Instant;
+use std::{mem::size_of, ops::RangeBounds, path::Path, sync::Arc, time::Instant};
 
 use bytes::Bytes;
 use prost::Message;
@@ -14,13 +10,15 @@ use tracing::error;
 
 use serde::{Deserialize, Serialize};
 
-use malachitebft_app_channel::app::types::codec::Codec;
-use malachitebft_app_channel::app::types::core::{CommitCertificate, Round};
-use malachitebft_app_channel::app::types::ProposedValue;
-use malachitebft_eth_types::codec::proto as codec;
-use malachitebft_eth_types::codec::proto::ProtobufCodec;
-use malachitebft_eth_types::proto;
-use malachitebft_eth_types::{Height, TestContext, Value};
+use malachitebft_app_channel::app::types::{
+    codec::Codec,
+    core::{CommitCertificate, Round},
+    ProposedValue,
+};
+use malachitebft_eth_types::{
+    codec::{proto as codec, proto::ProtobufCodec},
+    proto, Height, TestContext, Value,
+};
 use malachitebft_proto::{Error as ProtoError, Protobuf};
 
 mod keys;
@@ -48,11 +46,7 @@ pub struct ValidatorSetSnapshot {
 
 impl ValidatorSetSnapshot {
     pub fn new(height: Height, validator_set: ValidatorSet, epoch_length: u64) -> Self {
-        Self {
-            height,
-            validator_set,
-            epoch_length,
-        }
+        Self { height, validator_set, epoch_length }
     }
 }
 
@@ -124,10 +118,7 @@ struct Db {
 
 impl Db {
     fn new(path: impl AsRef<Path>, metrics: DbMetrics) -> Result<Self, StoreError> {
-        Ok(Self {
-            db: redb::Database::create(path).map_err(StoreError::Database)?,
-            metrics,
-        })
+        Ok(Self { db: redb::Database::create(path).map_err(StoreError::Database)?, metrics })
     }
 
     fn get_decided_value(&self, height: Height) -> Result<Option<DecidedValue>, StoreError> {
@@ -160,9 +151,8 @@ impl Db {
         self.metrics.add_read_bytes(read_bytes);
         self.metrics.add_key_read_bytes(size_of::<Height>() as u64);
 
-        let decided_value = value
-            .zip(certificate)
-            .map(|(value, certificate)| DecidedValue { value, certificate });
+        let decided_value =
+            value.zip(certificate).map(|(value, certificate)| DecidedValue { value, certificate });
 
         Ok(decided_value)
     }
@@ -212,9 +202,8 @@ impl Db {
             let bytes = value.value();
             read_bytes += bytes.len() as u64;
 
-            let proposal = ProtobufCodec
-                .decode(Bytes::from(bytes))
-                .map_err(StoreError::Protobuf)?;
+            let proposal =
+                ProtobufCodec.decode(Bytes::from(bytes)).map_err(StoreError::Protobuf)?;
 
             Some(proposal)
         } else {
@@ -223,8 +212,7 @@ impl Db {
 
         self.metrics.observe_read_time(start.elapsed());
         self.metrics.add_read_bytes(read_bytes);
-        self.metrics
-            .add_key_read_bytes(size_of::<(Height, Round)>() as u64);
+        self.metrics.add_key_read_bytes(size_of::<(Height, Round)>() as u64);
 
         Ok(value)
     }
@@ -262,11 +250,7 @@ impl Db {
     where
         Table: redb::ReadableTable<HeightKey, Vec<u8>>,
     {
-        Ok(table
-            .range(range)?
-            .flatten()
-            .map(|(key, _)| key.value())
-            .collect::<Vec<_>>())
+        Ok(table.range(range)?.flatten().map(|(key, _)| key.value()).collect::<Vec<_>>())
     }
 
     fn undecided_proposals_range<Table>(
@@ -277,11 +261,7 @@ impl Db {
     where
         Table: redb::ReadableTable<UndecidedValueKey, Vec<u8>>,
     {
-        Ok(table
-            .range(range)?
-            .flatten()
-            .map(|(key, _)| key.value())
-            .collect::<Vec<_>>())
+        Ok(table.range(range)?.flatten().map(|(key, _)| key.value()).collect::<Vec<_>>())
     }
 
     fn block_data_range<Table>(
@@ -292,11 +272,7 @@ impl Db {
     where
         Table: redb::ReadableTable<UndecidedValueKey, Vec<u8>>,
     {
-        Ok(table
-            .range(range)?
-            .flatten()
-            .map(|(key, _)| key.value())
-            .collect::<Vec<_>>())
+        Ok(table.range(range)?.flatten().map(|(key, _)| key.value()).collect::<Vec<_>>())
     }
 
     fn prune(&self, retain_height: Height) -> Result<Vec<Height>, StoreError> {
@@ -439,8 +415,7 @@ impl Db {
             let read_bytes = bytes.len() as u64;
             self.metrics.observe_read_time(start.elapsed());
             self.metrics.add_read_bytes(read_bytes);
-            self.metrics
-                .add_key_read_bytes((size_of::<Height>() + size_of::<Round>()) as u64);
+            self.metrics.add_key_read_bytes((size_of::<Height>() + size_of::<Round>()) as u64);
             return Ok(Some(Bytes::copy_from_slice(&bytes)));
         }
 
@@ -543,20 +518,14 @@ impl Store {
     /// Called by the application to determine the earliest available height.
     pub async fn min_decided_value_height(&self) -> Option<Height> {
         let db = Arc::clone(&self.db);
-        tokio::task::spawn_blocking(move || db.min_decided_value_height())
-            .await
-            .ok()
-            .flatten()
+        tokio::task::spawn_blocking(move || db.min_decided_value_height()).await.ok().flatten()
     }
 
     /// Returns the maximum height of decided values in the store.
     /// Called by the application to determine the latest available height.
     pub async fn max_decided_value_height(&self) -> Option<Height> {
         let db = Arc::clone(&self.db);
-        tokio::task::spawn_blocking(move || db.max_decided_value_height())
-            .await
-            .ok()
-            .flatten()
+        tokio::task::spawn_blocking(move || db.max_decided_value_height()).await.ok().flatten()
     }
 
     /// Retrieves a decided value for the given height.
@@ -577,10 +546,7 @@ impl Store {
         certificate: &CommitCertificate<TestContext>,
         value: Value,
     ) -> Result<(), StoreError> {
-        let decided_value = DecidedValue {
-            value,
-            certificate: certificate.clone(),
-        };
+        let decided_value = DecidedValue { value, certificate: certificate.clone() };
 
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || db.insert_decided_value(decided_value)).await?
@@ -607,8 +573,9 @@ impl Store {
         tokio::task::spawn_blocking(move || db.get_undecided_proposal(height, round)).await?
     }
 
-    /// Prunes the store by removing all undecided proposals and decided values up to the retain height.
-    /// Called by the application to clean up old data and free up space. This is done when a new value is committed.
+    /// Prunes the store by removing all undecided proposals and decided values up to the retain
+    /// height. Called by the application to clean up old data and free up space. This is done
+    /// when a new value is committed.
     pub async fn prune(&self, retain_height: Height) -> Result<Vec<Height>, StoreError> {
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || db.prune(retain_height)).await?
@@ -640,8 +607,8 @@ impl Store {
     //     value_id: ValueId,
     // ) -> Result<Option<ProposedValue<TestContext>>, StoreError> {
     //     let db = Arc::clone(&self.db);
-    //     tokio::task::spawn_blocking(move || db.get_undecided_proposal_by_value_id(value_id)).await?
-    // }
+    //     tokio::task::spawn_blocking(move ||
+    // db.get_undecided_proposal_by_value_id(value_id)).await? }
 
     pub async fn get_block_data(
         &self,

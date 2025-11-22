@@ -1,5 +1,4 @@
-use rand::rngs::StdRng;
-use rand::SeedableRng;
+use rand::{rngs::StdRng, SeedableRng};
 
 use malachitebft_core_types::VotingPower;
 

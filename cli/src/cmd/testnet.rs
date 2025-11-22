@@ -1,18 +1,21 @@
 //! Testnet command
 
-use std::path::Path;
-use std::str::FromStr;
-use std::time::Duration;
 use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
+use std::{path::Path, str::FromStr, time::Duration};
 use tracing::info;
 
-use malachitebft_app::node::{CanMakeConfig, Node, MakeConfigSettings, CanGeneratePrivateKey, CanMakeGenesis, CanMakePrivateKeyFile};
+use malachitebft_app::node::{
+    CanGeneratePrivateKey, CanMakeConfig, CanMakeGenesis, CanMakePrivateKeyFile,
+    MakeConfigSettings, Node,
+};
 use malachitebft_config::*;
 
-use crate::args::Args;
-use crate::error::Error;
-use crate::file::{save_config, save_genesis, save_priv_validator_key};
+use crate::{
+    args::Args,
+    error::Error,
+    file::{save_config, save_genesis, save_priv_validator_key},
+};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RuntimeFlavour {
@@ -27,8 +30,7 @@ impl FromStr for RuntimeFlavour {
         if s.contains(':') {
             match s.split_once(':') {
                 Some(("multi-threaded", n)) => Ok(RuntimeFlavour::MultiThreaded(
-                    n.parse()
-                        .map_err(|_| "Invalid number of threads".to_string())?,
+                    n.parse().map_err(|_| "Invalid number of threads".to_string())?,
                 )),
                 _ => Err(format!("Invalid runtime flavour: {s}")),
             }
@@ -55,8 +57,8 @@ pub struct TestnetCmd {
     /// The flavor of Tokio runtime to use.
     /// Possible values:
     /// - "single-threaded": A single threaded runtime (default)
-    /// - "multi-threaded:N":  A multi-threaded runtime with as N worker threads
-    ///   Use a value of 0 for N to use the number of cores available on the system.
+    /// - "multi-threaded:N":  A multi-threaded runtime with as N worker threads Use a value of 0
+    ///   for N to use the number of cores available on the system.
     #[clap(short, long, default_value = "single-threaded", verbatim_doc_comment)]
     pub runtime: RuntimeFlavour,
 
@@ -137,7 +139,7 @@ impl TestnetCmd {
         };
 
         testnet(node, self.nodes, home_dir, self.deterministic, settings)
-        .map_err(|e| eyre!("Failed to generate testnet configuration: {:?}", e))
+            .map_err(|e| eyre!("Failed to generate testnet configuration: {:?}", e))
     }
 }
 
@@ -153,10 +155,7 @@ where
     N: Node + CanMakeConfig + CanMakePrivateKeyFile + CanGeneratePrivateKey + CanMakeGenesis,
 {
     let private_keys = crate::new::generate_private_keys(node, nodes, deterministic);
-    let public_keys = private_keys
-        .iter()
-        .map(|pk| node.get_public_key(pk))
-        .collect();
+    let public_keys = private_keys.iter().map(|pk| node.get_public_key(pk)).collect();
     let genesis = crate::new::generate_genesis(node, public_keys, deterministic);
 
     for (i, private_key) in private_keys.iter().enumerate().take(nodes) {
@@ -170,16 +169,10 @@ where
         );
 
         // Set the destination folder
-        let args = Args {
-            home: Some(node_home_dir),
-            ..Args::default()
-        };
+        let args = Args { home: Some(node_home_dir), ..Args::default() };
 
         // Save config
-        save_config::<N>(
-            &args.get_config_file_path()?,
-            &N::make_config(i, nodes, settings),
-        )?;
+        save_config::<N>(&args.get_config_file_path()?, &N::make_config(i, nodes, settings))?;
 
         // Save private key
         let priv_validator_key = node.make_private_key_file((*private_key).clone());

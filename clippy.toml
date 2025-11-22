@@ -1,0 +1,3 @@
+too-large-for-stack = 128
+doc-valid-idents = []
+allow-dbg-in-tests = true

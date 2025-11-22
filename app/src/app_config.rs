@@ -1,8 +1,7 @@
 use malachitebft_app_channel::app::node::NodeConfig;
 use malachitebft_config::*;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::time::Duration;
+use std::{path::Path, time::Duration};
 
 /// Prune configuration options
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -15,10 +14,7 @@ pub struct PruneConfig {
 
 impl Default for PruneConfig {
     fn default() -> Self {
-        PruneConfig {
-            enabled: true,
-            retain_heights: 5000,
-        }
+        PruneConfig { enabled: true, retain_heights: 5000 }
     }
 }
 

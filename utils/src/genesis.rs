@@ -63,10 +63,7 @@ const _ACTIVE_VALIDATOR_COUNT_SLOT: u8 = 5; // uint256 public activeValidatorCou
 
 /// Create a signer from a mnemonic.
 pub(crate) fn make_signer(mnemonic: &str) -> LocalSigner<SigningKey> {
-    MnemonicBuilder::<English>::default()
-        .phrase(mnemonic)
-        .build()
-        .expect("Failed to create wallet")
+    MnemonicBuilder::<English>::default().phrase(mnemonic).build().expect("Failed to create wallet")
 }
 
 /// Read validator_set from validator config file
@@ -117,10 +114,7 @@ fn decode_public_key(base64_key: &str) -> Result<[u8; 32]> {
 }
 
 pub(crate) fn make_signers() -> Vec<LocalSigner<SigningKey>> {
-    TEST_MNEMONICS
-        .iter()
-        .map(|&mnemonic| make_signer(mnemonic))
-        .collect()
+    TEST_MNEMONICS.iter().map(|&mnemonic| make_signer(mnemonic)).collect()
 }
 
 /// Create initialized state storage item
@@ -133,8 +127,9 @@ fn create_initialized_storage() -> (FixedBytes<32>, FixedBytes<32>) {
 }
 
 /// Calculate storage location for a key in mapping
-/// For mapping(address => ValidatorInfo) validators, storage location is keccak256(abi.encodePacked(validator_address, validators_slot))
-/// Note: According to Solidity storage layout, validators mapping is at slot 0
+/// For mapping(address => ValidatorInfo) validators, storage location is
+/// keccak256(abi.encodePacked(validator_address, validators_slot)) Note: According to Solidity
+/// storage layout, validators mapping is at slot 0
 fn calculate_validator_storage_key(validator_address: Address) -> FixedBytes<32> {
     use alloy_primitives::keccak256;
 
@@ -149,8 +144,9 @@ fn calculate_validator_storage_key(validator_address: Address) -> FixedBytes<32>
 }
 
 /// Calculate storage location for an epoch in epochValidators mapping
-/// For mapping(uint256 => address[]) epochValidators, storage location is keccak256(abi.encodePacked(epoch, epoch_validators_slot))
-/// Note: According to contract storage layout, mapping starts from slot 2
+/// For mapping(uint256 => address[]) epochValidators, storage location is
+/// keccak256(abi.encodePacked(epoch, epoch_validators_slot)) Note: According to contract storage
+/// layout, mapping starts from slot 2
 fn calculate_epoch_validators_storage_key(epoch: u64) -> FixedBytes<32> {
     use alloy_primitives::keccak256;
 
@@ -174,7 +170,8 @@ fn slot_u64(n: u64) -> B256 {
 ///
 /// According to ValidatorSetManager contract, initialize the following storage items:
 /// - Slot 0: mapping(address => ValidatorInfo) validators - validator information mapping
-/// - Slot 1: mapping(address => address) consensusToOperator - consensus to operator address mapping
+/// - Slot 1: mapping(address => address) consensusToOperator - consensus to operator address
+///   mapping
 /// - Slot 2: mapping(uint256 => address[]) epochValidators - validator list for each epoch
 /// - Slot 3: address[] activeValidators - current active validator array
 /// - Slot 4: uint256 validatorNum - number of validators
@@ -197,16 +194,13 @@ fn create_validator_storage(genesis_data: &GenesisValidatorSet) -> Result<BTreeM
     let mut public_keys = Vec::new();
 
     for validator in &genesis_data.validators {
-        let consensus_address = validator
-            .consensus_address
-            .parse::<Address>()
-            .map_err(|e| {
-                color_eyre::eyre::eyre!(
-                    "Invalid consensus address {}: {}",
-                    validator.consensus_address,
-                    e
-                )
-            })?;
+        let consensus_address = validator.consensus_address.parse::<Address>().map_err(|e| {
+            color_eyre::eyre::eyre!(
+                "Invalid consensus address {}: {}",
+                validator.consensus_address,
+                e
+            )
+        })?;
         let operator_address = validator.operator_address.parse::<Address>().map_err(|e| {
             color_eyre::eyre::eyre!(
                 "Invalid operator address {}: {}",
@@ -230,10 +224,7 @@ fn create_validator_storage(genesis_data: &GenesisValidatorSet) -> Result<BTreeM
     ) = (consensus_addresses, operator_addresses, powers, public_keys);
 
     // Slot 4: validatorNum = number of validators
-    storage.insert(
-        slot_u64(4),
-        slot_u64(genesis_consensus_addresses.len() as u64),
-    );
+    storage.insert(slot_u64(4), slot_u64(genesis_consensus_addresses.len() as u64));
 
     // Slot 5: epochLength = 100
     storage.insert(slot_u64(5), slot_u64(EPOCH_LENGTH));
@@ -242,19 +233,13 @@ fn create_validator_storage(genesis_data: &GenesisValidatorSet) -> Result<BTreeM
     storage.insert(slot_u64(6), slot_u64(0));
 
     // Slot 7: admin (use first validator as admin)
-    storage.insert(
-        slot_u64(7),
-        B256::from(genesis_consensus_addresses[0].into_word()),
-    );
+    storage.insert(slot_u64(7), B256::from(genesis_consensus_addresses[0].into_word()));
 
     // Slot 8: implementation (proxy implementation address, set to 0 for now)
     storage.insert(slot_u64(8), B256::ZERO);
 
     // Slot 9: proxyAdmin (proxy admin, use first validator)
-    storage.insert(
-        slot_u64(9),
-        B256::from(genesis_consensus_addresses[0].into_word()),
-    );
+    storage.insert(slot_u64(9), B256::from(genesis_consensus_addresses[0].into_word()));
 
     // Initialize ValidatorInfo for each validator
     for (i, consensus_addr) in genesis_consensus_addresses.iter().enumerate() {
@@ -289,10 +274,7 @@ fn create_validator_storage(genesis_data: &GenesisValidatorSet) -> Result<BTreeM
 
     // Initialize activeValidators array
     // Array length stored in slot 3
-    storage.insert(
-        slot_u64(3),
-        slot_u64(genesis_consensus_addresses.len() as u64),
-    ); // array length
+    storage.insert(slot_u64(3), slot_u64(genesis_consensus_addresses.len() as u64)); // array length
 
     // Array elements stored in keccak256(slot) + index
     let array_slot = slot_u64(3);
@@ -310,10 +292,7 @@ fn create_validator_storage(genesis_data: &GenesisValidatorSet) -> Result<BTreeM
     let epoch_key = calculate_epoch_validators_storage_key(epoch);
 
     // Array length
-    storage.insert(
-        epoch_key,
-        slot_u64(genesis_consensus_addresses.len() as u64),
-    ); // array length
+    storage.insert(epoch_key, slot_u64(genesis_consensus_addresses.len() as u64)); // array length
 
     // Array elements
     let epoch_array_start = keccak256(epoch_key.as_slice());
@@ -334,7 +313,8 @@ fn calculate_consensus_to_operator_key(consensus_address: Address) -> B256 {
     // consensusToOperator mapping is at slot 1
     let mapping_slot = slot_u64(1);
 
-    // For mapping(address => address), the key is keccak256(abi.encodePacked(consensus_address, mapping_slot))
+    // For mapping(address => address), the key is keccak256(abi.encodePacked(consensus_address,
+    // mapping_slot))
     let mut data = [0u8; 64];
     data[12..32].copy_from_slice(consensus_address.as_slice());
     data[32..64].copy_from_slice(mapping_slot.as_slice());

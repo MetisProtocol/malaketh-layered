@@ -1,24 +1,28 @@
 use bytes::Bytes;
 use color_eyre::eyre::{self, eyre};
 use ssz::{Decode, Encode};
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use tracing::{debug, error, info, warn};
 
 use crate::store::ValidatorSetSnapshot;
 use alloy_rpc_types_engine::ExecutionPayloadV3;
-use malachitebft_app_channel::app::engine::host::Next;
-use malachitebft_app_channel::app::streaming::StreamContent;
-use malachitebft_app_channel::app::types::codec::Codec;
-use malachitebft_app_channel::app::types::core::{Round, Validity};
-use malachitebft_app_channel::app::types::sync::RawDecidedValue;
-use malachitebft_app_channel::app::types::{LocallyProposedValue, ProposedValue};
-use malachitebft_app_channel::{AppMsg, Channels, NetworkMsg};
-use malachitebft_eth_engine::engine::Engine;
-use malachitebft_eth_engine::json_structures::ExecutionBlock;
-use malachitebft_eth_engine::validator_executor::ValidatorExecutor;
-use malachitebft_eth_types::codec::proto::ProtobufCodec;
-use malachitebft_eth_types::{Block, BlockHash, Height, TestContext};
+use malachitebft_app_channel::{
+    app::{
+        engine::host::Next,
+        streaming::StreamContent,
+        types::{
+            codec::Codec,
+            core::{Round, Validity},
+            sync::RawDecidedValue,
+            LocallyProposedValue, ProposedValue,
+        },
+    },
+    AppMsg, Channels, NetworkMsg,
+};
+use malachitebft_eth_engine::{
+    engine::Engine, json_structures::ExecutionBlock, validator_executor::ValidatorExecutor,
+};
+use malachitebft_eth_types::{codec::proto::ProtobufCodec, Block, BlockHash, Height, TestContext};
 use tokio::sync::mpsc::Receiver;
 
 use crate::state::{decode_value, State};

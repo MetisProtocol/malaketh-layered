@@ -1,9 +1,12 @@
-use std::cmp::Ordering;
-use std::collections::{BTreeMap, BinaryHeap, HashSet};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, BinaryHeap, HashSet},
+};
 
-use malachitebft_app_channel::app::streaming::{Sequence, StreamId, StreamMessage};
-use malachitebft_app_channel::app::types::core::Round;
-use malachitebft_app_channel::app::types::PeerId;
+use malachitebft_app_channel::app::{
+    streaming::{Sequence, StreamId, StreamMessage},
+    types::{core::Round, PeerId},
+};
 use malachitebft_eth_types::{Address, Height, ProposalInit, ProposalPart};
 
 struct MinSeq<T>(StreamMessage<T>);
@@ -122,10 +125,7 @@ impl PartStreamsMap {
     ) -> Option<ProposalParts> {
         let stream_id = msg.stream_id.clone();
 
-        let state = self
-            .streams
-            .entry((peer_id, stream_id.clone()))
-            .or_default();
+        let state = self.streams.entry((peer_id, stream_id.clone())).or_default();
 
         if !state.seen_sequences.insert(msg.sequence) {
             // We have already seen a message with this sequence number.

@@ -13,11 +13,13 @@ use directories::BaseDirs;
 
 use malachitebft_config::{LogFormat, LogLevel};
 
-use crate::cmd::distributed_testnet::DistributedTestnetCmd;
-use crate::cmd::init::InitCmd;
-use crate::cmd::start::StartCmd;
-use crate::cmd::testnet::TestnetCmd;
-use crate::error::Error;
+use crate::{
+    cmd::{
+        distributed_testnet::DistributedTestnetCmd, init::InitCmd, start::StartCmd,
+        testnet::TestnetCmd,
+    },
+    error::Error,
+};
 
 const APP_FOLDER: &str = ".malachite";
 const CONFIG_FILE: &str = "config.toml";
@@ -76,10 +78,7 @@ impl Args {
     pub fn get_home_dir(&self) -> Result<PathBuf, Error> {
         match self.home {
             Some(ref path) => Ok(path.clone()),
-            None => Ok(BaseDirs::new()
-                .ok_or(Error::DirPath)?
-                .home_dir()
-                .join(APP_FOLDER)),
+            None => Ok(BaseDirs::new().ok_or(Error::DirPath)?.home_dir().join(APP_FOLDER)),
         }
     }
 
@@ -94,8 +93,8 @@ impl Args {
         Ok(self.get_config_dir()?.join(CONFIG_FILE))
     }
 
-    /// get_app_config_file_path returns the configuration file path based on the command-line arguments
-    /// and the configuration folder.
+    /// get_app_config_file_path returns the configuration file path based on the command-line
+    /// arguments and the configuration folder.
     pub fn get_app_config_file_path(&self) -> Result<PathBuf, Error> {
         Ok(self.get_config_dir()?.join(APP_CONFIG_FILE))
     }

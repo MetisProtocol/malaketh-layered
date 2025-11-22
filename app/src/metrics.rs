@@ -1,13 +1,15 @@
-use std::ops::Deref;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{ops::Deref, sync::Arc, time::Duration};
 
 use malachitebft_app_channel::app::metrics;
 
-use metrics::prometheus::metrics::counter::Counter;
-use metrics::prometheus::metrics::gauge::Gauge;
-use metrics::prometheus::metrics::histogram::{exponential_buckets, Histogram};
-use metrics::SharedRegistry;
+use metrics::{
+    prometheus::metrics::{
+        counter::Counter,
+        gauge::Gauge,
+        histogram::{exponential_buckets, Histogram},
+    },
+    SharedRegistry,
+};
 
 #[derive(Clone, Debug)]
 pub struct DbMetrics(Arc<Inner>);
@@ -85,11 +87,7 @@ impl DbMetrics {
         let metrics = Self::new();
 
         registry.with_prefix("app_channel", |registry| {
-            registry.register(
-                "db_size",
-                "Size of the database (bytes)",
-                metrics.db_size.clone(),
-            );
+            registry.register("db_size", "Size of the database (bytes)", metrics.db_size.clone());
 
             registry.register(
                 "db_write_bytes_total",

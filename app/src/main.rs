@@ -5,11 +5,11 @@ use tracing::{info, trace};
 
 use malachitebft_app_channel::app::node::Node;
 use malachitebft_config::*;
-use malachitebft_eth_cli::args::{Args, Commands};
-use malachitebft_eth_cli::cmd::init::InitCmd;
-use malachitebft_eth_cli::cmd::start::StartCmd;
-use malachitebft_eth_cli::cmd::testnet::TestnetCmd;
-use malachitebft_eth_cli::{logging, runtime};
+use malachitebft_eth_cli::{
+    args::{Args, Commands},
+    cmd::{init::InitCmd, start::StartCmd, testnet::TestnetCmd},
+    logging, runtime,
+};
 
 mod app;
 mod app_config;
@@ -45,7 +45,8 @@ fn main() -> Result<()> {
     }
 
     // This is a drop guard responsible for flushing any remaining logs when the program terminates.
-    // It must be assigned to a binding that is not _, as _ will result in the guard being dropped immediately.
+    // It must be assigned to a binding that is not _, as _ will result in the guard being dropped
+    // immediately.
     let _guard = logging::init(logging.log_level, logging.log_format);
 
     trace!("Command-line parameters: {args:?}");
@@ -86,8 +87,7 @@ fn start(args: &Args, _cmd: &StartCmd) -> Result<()> {
     };
 
     // Start the node
-    rt.block_on(app.run())
-        .map_err(|error| eyre!("Failed to run the application node: {error}"))
+    rt.block_on(app.run()).map_err(|error| eyre!("Failed to run the application node: {error}"))
 }
 
 fn init(args: &Args, cmd: &InitCmd) -> Result<()> {

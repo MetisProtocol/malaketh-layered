@@ -1,7 +1,6 @@
 //! Distributed testnet command
 
-use std::path::Path;
-use std::time::Duration;
+use std::{path::Path, time::Duration};
 
 use clap::Parser;
 use color_eyre::eyre::{eyre, Result};
@@ -9,13 +8,15 @@ use tracing::info;
 
 use malachitebft_app::node::{
     CanGeneratePrivateKey, CanMakeDistributedConfig, CanMakeGenesis, CanMakePrivateKeyFile,
-    Node, MakeConfigSettings
+    MakeConfigSettings, Node,
 };
 use malachitebft_config::*;
 
-use crate::args::Args;
-use crate::cmd::testnet::RuntimeFlavour;
-use crate::file::{save_config, save_genesis, save_priv_validator_key};
+use crate::{
+    args::Args,
+    cmd::testnet::RuntimeFlavour,
+    file::{save_config, save_genesis, save_priv_validator_key},
+};
 
 #[derive(Parser, Debug, Clone, PartialEq)]
 pub struct DistributedTestnetCmd {
@@ -30,12 +31,13 @@ pub struct DistributedTestnetCmd {
     /// The flavor of Tokio runtime to use.
     /// Possible values:
     /// - "single-threaded": A single threaded runtime (default)
-    /// - "multi-threaded:N":  A multi-threaded runtime with as N worker threads
-    ///   Use a value of 0 for N to use the number of cores available on the system.
+    /// - "multi-threaded:N":  A multi-threaded runtime with as N worker threads Use a value of 0
+    ///   for N to use the number of cores available on the system.
     #[clap(short, long, default_value = "single-threaded", verbatim_doc_comment)]
     pub runtime: RuntimeFlavour,
 
-    /// The IPs of the available machines in the network (comma separated) on which to run the nodes
+    /// The IPs of the available machines in the network (comma separated) on which to run the
+    /// nodes
     #[clap(long, value_delimiter = ',', verbatim_doc_comment)]
     pub machines: Vec<String>,
 
@@ -127,12 +129,7 @@ impl DistributedTestnetCmd {
             self.deterministic,
             settings,
         )
-        .map_err(|e| {
-            eyre!(
-                "Failed to generate distributed testnet configuration: {:?}",
-                e
-            )
-        })
+        .map_err(|e| eyre!("Failed to generate distributed testnet configuration: {:?}", e))
     }
 }
 
@@ -154,16 +151,11 @@ where
         + CanMakePrivateKeyFile,
 {
     let private_keys = crate::new::generate_private_keys(node, nodes, deterministic);
-    let public_keys = private_keys
-        .iter()
-        .map(|pk| node.get_public_key(pk))
-        .collect();
+    let public_keys = private_keys.iter().map(|pk| node.get_public_key(pk)).collect();
     let genesis = crate::new::generate_genesis(node, public_keys, deterministic);
 
     for (i, private_key) in private_keys.iter().enumerate().take(nodes) {
-        let node_home_dir = home_dir
-            .join((i % machines.len()).to_string())
-            .join(i.to_string());
+        let node_home_dir = home_dir.join((i % machines.len()).to_string()).join(i.to_string());
 
         info!(
             id = %i,
@@ -171,10 +163,7 @@ where
             "Generating configuration for node..."
         );
 
-        let args = Args {
-            home: Some(node_home_dir),
-            ..Args::default()
-        };
+        let args = Args { home: Some(node_home_dir), ..Args::default() };
 
         save_config::<N>(
             &args.get_config_file_path()?,

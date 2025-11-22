@@ -1,7 +1,6 @@
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::Result;
-use genesis::generate_genesis_with_contracts;
-use genesis::make_signers;
+use genesis::{generate_genesis_with_contracts, make_signers};
 use spammer::Spammer;
 use std::path::PathBuf;
 
@@ -65,18 +64,9 @@ async fn main() -> Result<()> {
         Commands::Genesis { validator_config } => {
             generate_genesis_with_contracts(&validator_config)
         }
-        Commands::Spam(SpamCmd {
-            rpc_url,
-            num_txs,
-            rate,
-            time,
-            blobs,
-            signer_index,
-        }) => {
+        Commands::Spam(SpamCmd { rpc_url, num_txs, rate, time, blobs, signer_index }) => {
             let url = format!("http://{rpc_url}").parse()?;
-            Spammer::new(url, signer_index, num_txs, time, rate, blobs)?
-                .run()
-                .await
+            Spammer::new(url, signer_index, num_txs, time, rate, blobs)?.run().await
         }
         Commands::Pubkey(cmd) => pubkey::run_pubkey(cmd),
     }
