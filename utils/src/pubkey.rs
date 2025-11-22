@@ -39,7 +39,7 @@ pub fn run_pubkey(cmd: PubkeyCmd) -> Result<()> {
 
     // Derive address per project types::Address::from_public_key:
     // address = first 20 bytes of Keccak256(pubkey)
-    let hash = Keccak256::digest(&pk32);
+    let hash = Keccak256::digest(pk32);
     let addr_hex = format!("0x{}", hex::encode(&hash[..20]));
 
     println!("consensus pubkey: {}", pk_hex);

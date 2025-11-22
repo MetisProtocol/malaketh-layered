@@ -6,7 +6,6 @@ use bytes::Bytes;
 use prost::Message;
 use redb::ReadableTable;
 use thiserror::Error;
-use tracing::error;
 
 use serde::{Deserialize, Serialize};
 
@@ -600,8 +599,8 @@ impl Store {
         tokio::task::spawn_blocking(move || db.get_latest_validator_snapshot()).await?
     }
 
-    /// Retrieves an undecided proposal by its value ID.
-    /// Called by the application when looking up a proposal by value ID.
+    // /// Retrieves an undecided proposal by its value ID.
+    // /// Called by the application when looking up a proposal by value ID.
     // pub async fn get_undecided_proposal_by_value_id(
     //     &self,
     //     value_id: ValueId,

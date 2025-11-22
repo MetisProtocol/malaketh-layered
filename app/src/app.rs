@@ -588,10 +588,8 @@ pub async fn run(
                                     error!("Failed to send ProcessSyncedValue reply");
                                 }
                             }
-                        } else {
-                            if reply.send(None).is_err() {
-                                error!("Failed to send ProcessSyncedValue reply (rejected)");
-                            }
+                        } else if reply.send(None).is_err() {
+                            error!("Failed to send ProcessSyncedValue reply (rejected)");
                         }
                     }
 

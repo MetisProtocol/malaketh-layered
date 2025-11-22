@@ -26,7 +26,7 @@ where
 
 /// Generate a Genesis file from the public keys and voting power.
 /// Voting power can be random or deterministically pseudo-random.
-pub fn generate_genesis<N: Node>(
+pub fn generate_genesis<N>(
     node: &N,
     pks: Vec<PublicKey<N::Context>>,
     deterministic: bool,

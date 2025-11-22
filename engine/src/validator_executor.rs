@@ -65,7 +65,7 @@ impl ValidatorExecutor {
                             consensus_address: consensus_addr,
                             operator_address: operator_addr,
                             public_key,
-                            voting_power: voting_power as u64,
+                            voting_power,
                         }
                     })
                     .collect();

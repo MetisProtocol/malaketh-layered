@@ -509,7 +509,7 @@ pub fn decode_aggregated_signature(
 }
 
 pub fn encode_aggregate_signature(
-    aggregated_signature: &Vec<CommitSignature<TestContext>>,
+    aggregated_signature: &[CommitSignature<TestContext>],
 ) -> Result<proto::AggregatedSignature, ProtoError> {
     let signatures = aggregated_signature
         .iter()

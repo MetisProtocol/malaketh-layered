@@ -95,6 +95,7 @@ fn seed_from_address(address: &Address) -> u64 {
 
 impl State {
     /// Creates a new State instance with the given validator address and starting height
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         initial_validator_set: ValidatorSet,
         epoch_length: u64,

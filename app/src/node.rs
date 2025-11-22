@@ -153,7 +153,7 @@ impl Node for App {
         info!("   Epoch length: {}", epoch_length);
 
         let (mut channels, engine_handle) = malachitebft_app_channel::start_engine(
-            ctx.clone(),
+            ctx,
             self.clone(),
             config.clone(),
             ProtobufCodec,
@@ -185,13 +185,13 @@ impl Node for App {
             let jwt_path = PathBuf::from_str(config.engine.wt_path.as_str())?;
             let eth_url: Url = {
                 let url = config.engine.eth_url.as_str();
-                Url::parse(&url)?
+                Url::parse(url)?
             };
             Engine::new(EngineRPC::new(engine_url, jwt_path.as_path())?, EthereumRPC::new(eth_url)?)
         };
 
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
-        let _ = tokio::spawn(async move {
+        tokio::spawn(async move {
             let mut sigterm =
                 signal(SignalKind::terminate()).expect("Failed to register SIGTERM handler");
             let mut sigint =
@@ -264,8 +264,7 @@ impl App {
         // Step 4: Convert to Malachite ValidatorSet (preserve operator_address from genesis)
         let validators: Vec<Validator> = validator_infos
             .into_iter()
-            .enumerate()
-            .map(|(_i, info)| {
+            .map(|info| {
                 // Validate Tendermint public key length
                 if info.tendermint_pubkey.len() != 32 {
                     return Err(eyre::eyre!(
