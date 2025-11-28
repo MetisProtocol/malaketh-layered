@@ -1,31 +1,33 @@
 //! The Application (or Node) definition. The Node trait implements the Consensus context and the
 //! cryptographic library used for signing.
 
-use std::path::PathBuf;
-use std::str::FromStr;
+use std::{path::PathBuf, str::FromStr};
 
-use crate::app_config::{load_config, Config};
-use crate::metrics::DbMetrics;
-use crate::state::State;
-use crate::store::{Store, ValidatorSetSnapshot};
+use crate::{
+    app_config::{load_config, Config},
+    metrics::DbMetrics,
+    state::State,
+    store::{Store, ValidatorSetSnapshot},
+};
 use async_trait::async_trait;
 use color_eyre::eyre;
-use malachitebft_app_channel::app::events::{RxEvent, TxEvent};
-use malachitebft_app_channel::app::metrics::SharedRegistry;
-use malachitebft_app_channel::app::node::{
-    CanGeneratePrivateKey, CanMakeConfig, CanMakeGenesis, CanMakePrivateKeyFile, EngineHandle,
-    MakeConfigSettings, Node, NodeHandle,
+use malachitebft_app_channel::app::{
+    events::{RxEvent, TxEvent},
+    metrics::SharedRegistry,
+    node::{
+        CanGeneratePrivateKey, CanMakeConfig, CanMakeGenesis, CanMakePrivateKeyFile, EngineHandle,
+        MakeConfigSettings, Node, NodeHandle,
+    },
+    types::{core::VotingPower, Keypair},
 };
-use malachitebft_app_channel::app::types::{core::VotingPower, Keypair};
 use malachitebft_eth_cli::metrics;
-use malachitebft_eth_engine::engine::Engine;
-use malachitebft_eth_engine::engine_rpc::EngineRPC;
-use malachitebft_eth_engine::ethereum_rpc::EthereumRPC;
-use malachitebft_eth_engine::genesis::parse_validators_from_extra_data;
-use malachitebft_eth_types::codec::proto::ProtobufCodec;
+use malachitebft_eth_engine::{
+    engine::Engine, engine_rpc::EngineRPC, ethereum_rpc::EthereumRPC,
+    genesis::parse_validators_from_extra_data,
+};
 use malachitebft_eth_types::{
-    Address, Ed25519Provider, Genesis, Height, PrivateKey, PublicKey, TestContext, Validator,
-    ValidatorSet,
+    codec::proto::ProtobufCodec, Address, Ed25519Provider, Genesis, Height, PrivateKey, PublicKey,
+    TestContext, Validator, ValidatorSet,
 };
 use rand::{CryptoRng, RngCore};
 use tokio::{
@@ -33,8 +35,7 @@ use tokio::{
     sync::mpsc,
     task::JoinHandle,
 };
-use tracing::Instrument;
-use tracing::{error, info, warn};
+use tracing::{error, info, Instrument};
 use url::Url;
 
 /// Main application struct implementing the consensus node functionality
@@ -152,7 +153,7 @@ impl Node for App {
         info!("   Epoch length: {}", epoch_length);
 
         let (mut channels, engine_handle) = malachitebft_app_channel::start_engine(
-            ctx.clone(),
+            ctx,
             self.clone(),
             config.clone(),
             ProtobufCodec,
@@ -184,16 +185,13 @@ impl Node for App {
             let jwt_path = PathBuf::from_str(config.engine.wt_path.as_str())?;
             let eth_url: Url = {
                 let url = config.engine.eth_url.as_str();
-                Url::parse(&url)?
+                Url::parse(url)?
             };
-            Engine::new(
-                EngineRPC::new(engine_url, jwt_path.as_path())?,
-                EthereumRPC::new(eth_url)?,
-            )
+            Engine::new(EngineRPC::new(engine_url, jwt_path.as_path())?, EthereumRPC::new(eth_url)?)
         };
 
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
-        let _ = tokio::spawn(async move {
+        tokio::spawn(async move {
             let mut sigterm =
                 signal(SignalKind::terminate()).expect("Failed to register SIGTERM handler");
             let mut sigint =
@@ -240,10 +238,7 @@ impl App {
         let eth_url = Url::parse(&eth_url_str)?;
         let eth_rpc = EthereumRPC::new(eth_url)?;
 
-        info!(
-            "📡 Connecting to Reth at {} to fetch genesis block...",
-            eth_url_str
-        );
+        info!("📡 Connecting to Reth at {} to fetch genesis block...", eth_url_str);
 
         // Step 2: Get genesis block from Reth
         let genesis_block = eth_rpc
@@ -253,10 +248,7 @@ impl App {
 
         info!("✅ Got genesis block from Reth");
         info!("   Block hash: {}", genesis_block.block_hash);
-        info!(
-            "   ExtraData length: {} bytes",
-            genesis_block.extra_data.len()
-        );
+        info!("   ExtraData length: {} bytes", genesis_block.extra_data.len());
         info!(
             "   ExtraData hex: 0x{}...",
             hex::encode(
@@ -272,8 +264,7 @@ impl App {
         // Step 4: Convert to Malachite ValidatorSet (preserve operator_address from genesis)
         let validators: Vec<Validator> = validator_infos
             .into_iter()
-            .enumerate()
-            .map(|(_i, info)| {
+            .map(|info| {
                 // Validate Tendermint public key length
                 if info.tendermint_pubkey.len() != 32 {
                     return Err(eyre::eyre!(
@@ -319,10 +310,7 @@ impl App {
             return Err(eyre::eyre!("No validators found in genesis extraData"));
         }
 
-        info!(
-            "🎉 Successfully built initial validator set with {} validators",
-            validators.len()
-        );
+        info!("🎉 Successfully built initial validator set with {} validators", validators.len());
 
         Ok((ValidatorSet::new(validators), epoch_length))
     }
@@ -335,11 +323,8 @@ impl App {
         config: &Config,
     ) -> eyre::Result<(ValidatorSet, u64, Height)> {
         // 1. Try to restore height from store
-        let current_height = store
-            .max_decided_value_height()
-            .await
-            .map(|h| h.increment())
-            .unwrap_or(Height::new(1));
+        let current_height =
+            store.max_decided_value_height().await.map(|h| h.increment()).unwrap_or(Height::new(1));
 
         info!("🔍 Checking storage for existing state...");
         info!("   Current height from storage: {}", current_height);
@@ -381,11 +366,7 @@ impl App {
                 let blocks_since_snapshot = current_height.as_u64() - snapshot.height.as_u64();
                 info!("   Age: {} blocks", blocks_since_snapshot);
 
-                return Ok((
-                    snapshot.validator_set,
-                    snapshot.epoch_length,
-                    current_height,
-                ));
+                return Ok((snapshot.validator_set, snapshot.epoch_length, current_height));
             }
 
             // 2.3 No snapshot found: data corruption
@@ -401,9 +382,7 @@ impl App {
 
 impl CanMakeGenesis for App {
     fn make_genesis(&self, validators: Vec<(PublicKey, VotingPower)>) -> Self::Genesis {
-        let validators = validators
-            .into_iter()
-            .map(|(pk, vp)| Validator::new(pk, vp));
+        let validators = validators.into_iter().map(|(pk, vp)| Validator::new(pk, vp));
 
         let validator_set = ValidatorSet::new(validators);
 
@@ -435,8 +414,7 @@ impl CanMakeConfig for App {
 /// Generate configuration for node "index" out of "total" number of nodes.
 fn make_config(index: usize, total: usize, settings: MakeConfigSettings) -> Config {
     use itertools::Itertools;
-    use rand::seq::IteratorRandom;
-    use rand::Rng;
+    use rand::{seq::IteratorRandom, Rng};
 
     use malachitebft_app_channel::app::config::*;
 
@@ -449,7 +427,8 @@ fn make_config(index: usize, total: usize, settings: MakeConfigSettings) -> Conf
     Config {
         moniker: format!("app-{}", index),
         consensus: ConsensusConfig {
-            // Current channel app does not support parts-only value payload properly as Init does not include valid_round
+            // Current channel app does not support parts-only value payload properly as Init does
+            // not include valid_round
             value_payload: ValuePayload::ProposalAndParts,
             queue_capacity: 100,
             timeouts: TimeoutConfig::default(),
@@ -458,32 +437,20 @@ fn make_config(index: usize, total: usize, settings: MakeConfigSettings) -> Conf
                 listen_addr: settings.transport.multiaddr("127.0.0.1", consensus_port),
                 persistent_peers: if settings.discovery.enabled {
                     let mut rng = rand::thread_rng();
-                    let count = if total > 1 {
-                        rng.gen_range(1..=(total / 2))
-                    } else {
-                        0
-                    };
-                    let peers = (0..total)
-                        .filter(|j| *j != index)
-                        .choose_multiple(&mut rng, count);
+                    let count = if total > 1 { rng.gen_range(1..=(total / 2)) } else { 0 };
+                    let peers = (0..total).filter(|j| *j != index).choose_multiple(&mut rng, count);
 
                     peers
                         .iter()
                         .unique()
                         .map(|index| {
-                            settings
-                                .transport
-                                .multiaddr("127.0.0.1", CONSENSUS_BASE_PORT + index)
+                            settings.transport.multiaddr("127.0.0.1", CONSENSUS_BASE_PORT + index)
                         })
                         .collect()
                 } else {
                     (0..total)
                         .filter(|j| *j != index)
-                        .map(|j| {
-                            settings
-                                .transport
-                                .multiaddr("127.0.0.1", CONSENSUS_BASE_PORT + j)
-                        })
+                        .map(|j| settings.transport.multiaddr("127.0.0.1", CONSENSUS_BASE_PORT + j))
                         .collect()
                 },
                 discovery: settings.discovery,

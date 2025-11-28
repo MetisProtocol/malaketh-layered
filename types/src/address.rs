@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 use alloy_primitives::Address as AlloyAddress;
 use malachitebft_proto::{Error as ProtoError, Protobuf};
 
-use crate::signing::PublicKey;
-use crate::{proto, Hashable};
+use crate::{proto, signing::PublicKey, Hashable};
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -86,9 +85,7 @@ impl Protobuf for Address {
     }
 
     fn to_proto(&self) -> Result<Self::Proto, ProtoError> {
-        Ok(proto::Address {
-            value: self.0.to_vec().into(),
-        })
+        Ok(proto::Address { value: self.0.to_vec().into() })
     }
 }
 

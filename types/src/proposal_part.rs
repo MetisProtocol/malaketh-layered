@@ -7,8 +7,10 @@ use malachitebft_core_types::Round;
 use malachitebft_proto::{self as proto, Error as ProtoError, Protobuf};
 use malachitebft_signing_ed25519::Signature;
 
-use crate::codec::proto::{decode_signature, encode_signature};
-use crate::{Address, Height, TestContext};
+use crate::{
+    codec::proto::{decode_signature, encode_signature},
+    Address, Height, TestContext,
+};
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProposalData {
@@ -91,11 +93,7 @@ pub struct ProposalInit {
 
 impl ProposalInit {
     pub fn new(height: Height, round: Round, proposer: Address) -> Self {
-        Self {
-            height,
-            round,
-            proposer,
-        }
+        Self { height, round, proposer }
     }
 }
 
@@ -127,9 +125,7 @@ impl Protobuf for ProposalPart {
     fn from_proto(proto: Self::Proto) -> Result<Self, ProtoError> {
         use crate::proto::proposal_part::Part;
 
-        let part = proto
-            .part
-            .ok_or_else(|| ProtoError::missing_field::<Self::Proto>("part"))?;
+        let part = proto.part.ok_or_else(|| ProtoError::missing_field::<Self::Proto>("part"))?;
 
         match part {
             Part::Init(init) => Ok(Self::Init(ProposalInit {
@@ -152,8 +148,7 @@ impl Protobuf for ProposalPart {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn to_proto(&self) -> Result<Self::Proto, ProtoError> {
-        use crate::proto;
-        use crate::proto::proposal_part::Part;
+        use crate::{proto, proto::proposal_part::Part};
 
         match self {
             Self::Init(init) => Ok(Self::Proto {
@@ -164,9 +159,7 @@ impl Protobuf for ProposalPart {
                 })),
             }),
             Self::Data(data) => Ok(Self::Proto {
-                part: Some(Part::Data(proto::ProposalData {
-                    bytes: data.bytes.clone(),
-                })),
+                part: Some(Part::Data(proto::ProposalData { bytes: data.bytes.clone() })),
             }),
             Self::Fin(fin) => Ok(Self::Proto {
                 part: Some(Part::Fin(proto::ProposalFin {

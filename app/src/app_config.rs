@@ -1,8 +1,7 @@
-use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::time::Duration;
-use malachitebft_config::*;
 use malachitebft_app_channel::app::node::NodeConfig;
+use malachitebft_config::*;
+use serde::{Deserialize, Serialize};
+use std::{path::Path, time::Duration};
 
 /// Prune configuration options
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -15,10 +14,7 @@ pub struct PruneConfig {
 
 impl Default for PruneConfig {
     fn default() -> Self {
-        PruneConfig {
-            enabled: true,
-            retain_heights: 5000,
-        }
+        PruneConfig { enabled: true, retain_heights: 5000 }
     }
 }
 
@@ -52,27 +48,6 @@ impl Default for DynamicValidatorSetConfig {
             slashing_enabled: true,
             fee_distribution_enabled: true,
         }
-    }
-}
-
-impl DynamicValidatorSetConfig {
-    /// Validate the configuration
-    pub fn validate(&self) -> Result<(), String> {
-        if self.enabled && self.contract_address.is_none() {
-            return Err("contract_address is required when dynamic validator set is enabled".to_string());
-        }
-        if self.epoch_length_blocks == 0 {
-            return Err("epoch_length_blocks must be greater than 0".to_string());
-        }
-        if self.update_interval_seconds == 0 {
-            return Err("update_interval_seconds must be greater than 0".to_string());
-        }
-        if let Some(addr) = &self.contract_address {
-            if !addr.starts_with("0x") || addr.len() != 42 {
-                return Err(format!("Invalid contract address format: {}", addr));
-            }
-        }
-        Ok(())
     }
 }
 

@@ -4,6 +4,7 @@ Tendermint-based consensus engine for Ethereum execution clients, connected via 
 Built as a shim layer on top of [Malachite][malachite].
 
 __Table of contents__
+
 - [Introduction](#introduction)
 - [Engine API](#engine-api)
 - [Malachite as a library](#malachite-as-a-library)
@@ -30,7 +31,7 @@ API-compliant client, such as Geth or Nethermind.
 
 It's worth noting that Malaketh-layered is not an Ethereum consensus client. Ethereum's consensus
 mechanism is based on Gasper, a hybrid of Casper FFG for finality and LMD-GHOST for fork choice,
-where blocks are confirmed as immutable after two epochs, approximately 12.8 minutes. In constrast,
+where blocks are confirmed as immutable after two epochs, approximately 12.8 minutes. In contrast,
 Malachite implements Tendermint, a BFT protocol with instant or single-slot finality. This means
 Malaketh-layered is bringing instant finality to Ethereum execution but it cannot be used as a
 direct replacement for Ethereum's consensus clients such as Lighthouse or Prysm.
@@ -87,6 +88,7 @@ Malaketh-layered is an application built on top of Malachite, which is unaware o
 only exposes the Channels interface.
 
 The application includes two main components for interacting with the execution client:
+
 - An RPC client with JWT authentication to send Engine API requests to the execution client.
 - An internal state to keep track of values such as the latest block and the current height, round,
   and proposer. It also maintains persistent storage for proposals and block data to support block
@@ -129,12 +131,11 @@ following steps:
 
 1. Retrieve the stored block and compute its hash.
 2. Call `forkchoiceUpdated` with the block’s hash (no `PayloadAttributes`) to set the block as the
-   head  of the chain and finalise it.
+   head of the chain and finalise it.
 3. Update the local state with the new block and certificate. Finally, signal Malachite to proceed
    to the next height.
 
 <img src="docs/assets/malaketh-layered-2.png" width="800" />
-
 
 ### Voting and committing as a non-proposer
 
@@ -173,6 +174,7 @@ Check out the following section for reproducing these tests.
 ### Setup and run
 
 Running `make` will:
+
 1. Clean up any previous running testnet, if any.
 2. Build the app.
 3. Generate a genesis file in `./assets/genesis.json`.
@@ -188,6 +190,7 @@ Check out the metrics in the Grafana dashboards at http://localhost:3000.
 
 In a separate terminal, run the following command to send transactions during 60 seconds at a rate
 of 1000 tx/s to one of Reth RPC endpoints.
+
 ```
 cargo run --bin malachitebft-eth-utils spam --time=60 --rate=1000
 ```
@@ -204,17 +207,26 @@ cargo run --bin malachitebft-eth-utils spam --time=60 --rate=1000
 
 ## Links
 
-- Malachite architecture [https://github.com/circlefin/malachite/blob/13bca14cd209d985c3adf101a02924acde8723a5/ARCHITECTURE.md](https://github.com/circlefin/malachite/blob/13bca14cd209d985c3adf101a02924acde8723a5/ARCHITECTURE.md)
-- Tutorial on Malachite’s Channel-based interface [https://github.com/circlefin/malachite/blob/13bca14cd209d985c3adf101a02924acde8723a5/docs/tutorials/channels.md][channels]
-- The most flexible Consensus API in the world [https://informal.systems/blog/the-most-flexible-consensus-api-in-the-world][flexible]
-- Engine API [https://github.com/ethereum/execution-apis/tree/main/src/engine](https://github.com/ethereum/execution-apis/tree/main/src/engine)
+- Malachite
+  architecture [https://github.com/circlefin/malachite/blob/13bca14cd209d985c3adf101a02924acde8723a5/ARCHITECTURE.md](https://github.com/circlefin/malachite/blob/13bca14cd209d985c3adf101a02924acde8723a5/ARCHITECTURE.md)
+- Tutorial on Malachite’s Channel-based
+  interface [https://github.com/circlefin/malachite/blob/13bca14cd209d985c3adf101a02924acde8723a5/docs/tutorials/channels.md][channels]
+- The most flexible Consensus API in the
+  world [https://informal.systems/blog/the-most-flexible-consensus-api-in-the-world][flexible]
+- Engine
+  API [https://github.com/ethereum/execution-apis/tree/main/src/engine](https://github.com/ethereum/execution-apis/tree/main/src/engine)
 - Reth [https://github.com/paradigmxyz/reth](https://github.com/paradigmxyz/reth)
 
 [malachite]: https://github.com/informalsystems/malachite
+
 [engine-api]: https://github.com/ethereum/execution-apis/tree/main/src/engine
+
 [foundry]: https://book.getfoundry.sh/getting-started/installation
+
 [cast]: https://book.getfoundry.sh/cast/
+
 [channels]: https://github.com/informalsystems/malachite/blob/13bca14cd209d985c3adf101a02924acde8723a5/docs/tutorials/channels.md
+
 [flexible]: https://informal.systems/blog/the-most-flexible-consensus-api-in-the-world
 
 ## License

@@ -1,15 +1,14 @@
 use tracing::level_filters::LevelFilter;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::filter::EnvFilter;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::FmtSubscriber;
+use tracing_subscriber::{filter::EnvFilter, util::SubscriberInitExt, FmtSubscriber};
 
 use malachitebft_config::{LogFormat, LogLevel};
 
 /// Initialize logging.
 ///
 /// Returns a drop guard responsible for flushing any remaining logs when the program terminates.
-/// The guard must be assigned to a binding that is not _, as _ will result in the guard being dropped immediately.
+/// The guard must be assigned to a binding that is not _, as _ will result in the guard being
+/// dropped immediately.
 pub fn init(log_level: LogLevel, log_format: LogFormat) -> WorkerGuard {
     let filter = build_tracing_filter(log_level);
 
@@ -55,10 +54,7 @@ const TARGET_CRATES: &[&str] = &["informalsystems_malachitebft", "malachitebft_e
 pub fn default_directive(log_level: LogLevel) -> String {
     use itertools::Itertools;
 
-    TARGET_CRATES
-        .iter()
-        .map(|&c| format!("{c}={log_level}"))
-        .join(",")
+    TARGET_CRATES.iter().map(|&c| format!("{c}={log_level}")).join(",")
 }
 
 /// Builds a tracing filter based on the input `log_level`.

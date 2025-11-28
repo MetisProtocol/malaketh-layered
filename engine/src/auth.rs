@@ -14,9 +14,7 @@ pub struct Auth {
 
 impl Auth {
     pub fn new(secret: JwtSecret) -> Self {
-        Self {
-            key: EncodingKey::from_secret(secret.as_bytes()),
-        }
+        Self { key: EncodingKey::from_secret(secret.as_bytes()) }
     }
 
     /// Create a new `Auth` struct given the path to the file containing the hex
@@ -39,10 +37,7 @@ impl Auth {
 
     /// Generate a `Claims` struct with `iat` set to current time
     fn generate_claims_at_timestamp(&self) -> Claims {
-        Claims {
-            iat: get_current_timestamp(),
-            exp: None,
-        }
+        Claims { iat: get_current_timestamp(), exp: None }
     }
 }
 
@@ -53,7 +48,7 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         let secret = JwtSecret::random();
-        let auth = Auth::new(secret.clone());
+        let auth = Auth::new(secret);
         let claims = auth.generate_claims_at_timestamp();
         let token = auth.generate_token_with_claims(&claims).unwrap();
 

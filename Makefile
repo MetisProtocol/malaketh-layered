@@ -26,3 +26,50 @@ spam:
 
 add-new-peer:
 	bash scripts/spawn-new-peer.bash
+
+fmt:
+	cargo +nightly fmt
+
+clippy:
+	cargo +nightly clippy
+
+clippy-fix:
+	cargo +nightly clippy \
+	--workspace \
+	--lib \
+	--examples \
+	--tests \
+	--benches \
+	--all-features \
+	--fix \
+	--allow-staged \
+	--allow-dirty \
+	-- -D warnings
+
+lint:
+	make fmt && \
+	make clippy && \
+	make lint-typos && \
+	make lint-toml
+
+lint-typos: ensure-typos
+	typos
+
+ensure-typos:
+	@if ! command -v typos &> /dev/null; then \
+		echo "typos not found. Please install it by running the command 'cargo install typos-cli' or refer to the following link for more information: https://github.com/crate-ci/typos"; \
+		exit 1; \
+    fi
+
+lint-toml: ensure-dprint
+	dprint fmt
+
+ensure-dprint:
+	@if ! command -v dprint &> /dev/null; then \
+		echo "dprint not found. Please install it by running the command 'cargo install --locked dprint' or refer to the following link for more information: https://github.com/dprint/dprint"; \
+		exit 1; \
+    fi
+
+fix-lint:
+	make clippy-fix && \
+	make fmt

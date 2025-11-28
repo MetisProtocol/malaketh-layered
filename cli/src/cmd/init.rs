@@ -1,19 +1,19 @@
 //! Init command
 
-use std::path::Path;
-use std::time::Duration;
-use crate::error::Error;
-use crate::file::{save_config, save_genesis, save_priv_validator_key};
-use crate::new::{generate_genesis, generate_private_keys};
+use crate::{
+    error::Error,
+    file::{save_config, save_genesis, save_priv_validator_key},
+    new::{generate_genesis, generate_private_keys},
+};
 use clap::Parser;
 use malachitebft_app::node::{
     CanGeneratePrivateKey, CanMakeConfig, CanMakeGenesis, CanMakePrivateKeyFile,
-    Node, MakeConfigSettings
+    MakeConfigSettings, Node,
 };
 use malachitebft_config::{
-    BootstrapProtocol, RuntimeConfig, Selector, TransportProtocol,
-    DiscoveryConfig
+    BootstrapProtocol, DiscoveryConfig, RuntimeConfig, Selector, TransportProtocol,
 };
+use std::{path::Path, time::Duration};
 use tracing::{info, warn};
 
 #[derive(Parser, Debug, Clone, Default, PartialEq)]
@@ -94,14 +94,7 @@ impl InitCmd {
 
         let config = N::make_config(0, 1, settings);
 
-        init(
-            node,
-            &config,
-            config_file,
-            genesis_file,
-            priv_validator_key_file,
-            self.overwrite,
-        )?;
+        init(node, &config, config_file, genesis_file, priv_validator_key_file, self.overwrite)?;
 
         Ok(())
     }
@@ -145,10 +138,7 @@ where
 
     // Save default genesis
     if genesis_file.exists() && !overwrite {
-        warn!(
-            "Genesis file already exists at {:?}, skipping",
-            genesis_file.display()
-        )
+        warn!("Genesis file already exists at {:?}, skipping", genesis_file.display())
     } else {
         let public_key = node.get_public_key(private_key);
         let genesis = generate_genesis(node, vec![public_key], false);

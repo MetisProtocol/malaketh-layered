@@ -1,9 +1,8 @@
 use alloy_rpc_types::Withdrawal;
 use alloy_rpc_types_engine::ExecutionPayloadV3;
 use malachitebft_eth_types::{
-    Address, BlockHash, BlockNumber, BlockTimestamp, Bloom, B256, U256,
+    Address, BlockHash, BlockNumber, BlockTimestamp, Bloom, Bytes, B256, U256,
 };
-use malachitebft_eth_types::Bytes;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -126,7 +125,7 @@ pub struct ExecutionBlock {
 
     #[serde(rename = "mixHash")]
     pub prev_randao: B256,
-    
+
     // Added for genesis extraData parsing
     pub extra_data: Bytes,
 }

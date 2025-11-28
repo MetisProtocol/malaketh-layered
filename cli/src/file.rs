@@ -1,17 +1,13 @@
 //! File save functions
 
-use std::fs;
-use std::path::Path;
+use std::{fs, path::Path};
 
 use crate::error::Error;
 use malachitebft_app::node::Node;
 
 /// Save configuration to file
 pub fn save_config<N: Node>(config_file: &Path, config: &N::Config) -> Result<(), Error> {
-    save(
-        config_file,
-        &toml::to_string_pretty(config).map_err(|e| Error::ToJSON(e.to_string()))?,
-    )
+    save(config_file, &toml::to_string_pretty(config).map_err(|e| Error::ToJSON(e.to_string()))?)
 }
 
 /// Save genesis to file
@@ -53,8 +49,7 @@ fn save(path: &Path, data: &str) -> Result<(), Error> {
         .open(path)
         .map_err(|_| Error::OpenFile(path.to_path_buf()))?;
 
-    f.write_all(data.as_bytes())
-        .map_err(|_| Error::WriteFile(path.to_path_buf()))?;
+    f.write_all(data.as_bytes()).map_err(|_| Error::WriteFile(path.to_path_buf()))?;
 
     Ok(())
 }

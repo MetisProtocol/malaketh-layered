@@ -23,7 +23,8 @@ pub struct GenesisValidatorInfo {
 
 /// Parse validators WITH complete information from extraData
 ///
-/// Format: vanity(32) + [consensusAddr(20) + operatorAddr(20) + votingPower(8) + tendermintPubKey(32)] * N + epochLength(8) + seal(65)
+/// Format: vanity(32) + [consensusAddr(20) + operatorAddr(20) + votingPower(8) +
+/// tendermintPubKey(32)] * N + epochLength(8) + seal(65)
 ///
 /// # Arguments
 /// * `extra_data` - The extraData bytes from genesis block header
@@ -31,7 +32,9 @@ pub struct GenesisValidatorInfo {
 /// # Returns
 /// * `Vec<GenesisValidatorInfo>` - List of validators with complete information
 /// * `u64` - Epoch length in blocks
-pub fn parse_validators_from_extra_data(extra_data: &[u8]) -> Result<(Vec<GenesisValidatorInfo>, u64)> {
+pub fn parse_validators_from_extra_data(
+    extra_data: &[u8],
+) -> Result<(Vec<GenesisValidatorInfo>, u64)> {
     // Minimum length check
     let min_len = EXTRA_VANITY_LEN + EXTRA_SEAL_LEN;
 
@@ -57,7 +60,8 @@ pub fn parse_validators_from_extra_data(extra_data: &[u8]) -> Result<(Vec<Genesi
     }
 
     // Extract epoch_length (last 8 bytes before seal)
-    let epoch_length_bytes = &extra_data[extra_data.len() - EXTRA_SEAL_LEN - 8..extra_data.len() - EXTRA_SEAL_LEN];
+    let epoch_length_bytes =
+        &extra_data[extra_data.len() - EXTRA_SEAL_LEN - 8..extra_data.len() - EXTRA_SEAL_LEN];
     let epoch_length = u64::from_be_bytes([
         epoch_length_bytes[0],
         epoch_length_bytes[1],

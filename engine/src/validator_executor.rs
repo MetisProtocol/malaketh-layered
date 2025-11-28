@@ -1,9 +1,10 @@
 // Validator Executor module
 // Handles pre-execution and post-execution logic for validator set management
 
-use crate::ethereum_rpc::EthereumRPC;
-use crate::stake_hub_client::StakeHubClient;
-use crate::system_contracts::STAKE_HUB_CONTRACT;
+use crate::{
+    ethereum_rpc::EthereumRPC, stake_hub_client::StakeHubClient,
+    system_contracts::STAKE_HUB_CONTRACT,
+};
 use color_eyre::eyre::Result;
 use std::sync::Arc;
 use tracing::{info, warn};
@@ -39,11 +40,7 @@ impl ValidatorExecutor {
         &self,
     ) -> Result<Option<malachitebft_eth_types::ValidatorSet>> {
         // Get top validators by voting power
-        match self
-            .stake_hub_client
-            .get_top_validators_by_voting_power()
-            .await
-        {
+        match self.stake_hub_client.get_top_validators_by_voting_power().await {
             Ok(elected_validators) => {
                 info!(
                     "✅ Retrieved {} validators from StakeHub",
@@ -57,24 +54,20 @@ impl ValidatorExecutor {
                     .zip(elected_validators.voting_powers.into_iter())
                     .zip(elected_validators.operator_addrs.into_iter())
                     .zip(elected_validators.tendermint_pub_keys.into_iter())
-                    .map(
-                        |(((consensus_addr, voting_power), operator_addr), tendermint_pub_key)| {
-                            let consensus_addr =
-                                malachitebft_eth_types::Address::from(consensus_addr);
-                            let operator_addr =
-                                malachitebft_eth_types::Address::from(operator_addr);
-                            let public_key = malachitebft_eth_types::PublicKey::from_bytes(
-                                tendermint_pub_key.try_into().unwrap(),
-                            );
+                    .map(|(((consensus_addr, voting_power), operator_addr), tendermint_pub_key)| {
+                        let consensus_addr = malachitebft_eth_types::Address::from(consensus_addr);
+                        let operator_addr = malachitebft_eth_types::Address::from(operator_addr);
+                        let public_key = malachitebft_eth_types::PublicKey::from_bytes(
+                            tendermint_pub_key.try_into().unwrap(),
+                        );
 
-                            malachitebft_eth_types::Validator {
-                                consensus_address: consensus_addr,
-                                operator_address: operator_addr,
-                                public_key,
-                                voting_power: voting_power as u64,
-                            }
-                        },
-                    )
+                        malachitebft_eth_types::Validator {
+                            consensus_address: consensus_addr,
+                            operator_address: operator_addr,
+                            public_key,
+                            voting_power,
+                        }
+                    })
                     .collect();
 
                 Ok(Some(malachitebft_eth_types::ValidatorSet::new(validators)))
