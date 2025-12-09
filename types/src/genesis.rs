@@ -49,6 +49,15 @@ mod tests {
     #[test]
     fn test_genesis() {
         let genesis: Genesis = serde_json::from_str(VALIDATOR_SET_JSON).unwrap();
+        
+        assert_eq!(genesis.validator_set.validators.len(), 3);
+        assert_eq!(genesis.validator_set.validators[0].voting_power, 1);
+    }
+
+    #[test]
+    fn test_genesis_from_file() {
+        let genesis_str = std::fs::read_to_string("../nodes_config_bin/0/config/genesis.json").unwrap();
+        let genesis: Genesis = serde_json::from_str(&genesis_str).unwrap();
 
         assert_eq!(genesis.validator_set.validators.len(), 3);
         assert_eq!(genesis.validator_set.validators[0].voting_power, 1);
