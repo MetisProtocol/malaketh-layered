@@ -1,9 +1,5 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let protos = &[
-        "proto/consensus.proto",
-        "proto/sync.proto",
-        "proto/liveness.proto",
-    ];
+    let protos = &["proto/consensus.proto", "proto/sync.proto", "proto/liveness.proto"];
 
     for proto in protos {
         println!("cargo:rerun-if-changed={proto}");

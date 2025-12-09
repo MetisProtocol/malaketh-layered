@@ -69,10 +69,7 @@ pub struct EthereumRPC {
 
 impl EthereumRPC {
     pub fn new(url: Url) -> eyre::Result<Self> {
-        Ok(Self {
-            client: Client::builder().build()?,
-            url,
-        })
+        Ok(Self { client: Client::builder().build()?, url })
     }
 
     pub async fn rpc_request<D: DeserializeOwned>(
@@ -81,12 +78,7 @@ impl EthereumRPC {
         params: serde_json::Value,
         timeout: Duration,
     ) -> eyre::Result<D> {
-        let body = JsonRequestBody {
-            jsonrpc: "2.0",
-            method,
-            params,
-            id: json!(1),
-        };
+        let body = JsonRequestBody { jsonrpc: "2.0", method, params, id: json!(1) };
         let request = self
             .client
             .post(self.url.clone())
@@ -99,18 +91,17 @@ impl EthereumRPC {
 
         match (body.result, body.error) {
             (result, None) => serde_json::from_value(result).map_err(Into::into),
-            (_, Some(error)) => Err(eyre::eyre!(
-                "Server Message: code: {}, message: {}",
-                error.code,
-                error.message,
-            )),
+            (_, Some(error)) => {
+                Err(
+                    eyre::eyre!("Server Message: code: {}, message: {}", error.code, error.message,),
+                )
+            }
         }
     }
 
     /// Get the eth1 chain id of the given endpoint.
     pub async fn get_chain_id(&self) -> eyre::Result<String> {
-        self.rpc_request("eth_chainId", json!([]), Duration::from_secs(1))
-            .await
+        self.rpc_request("eth_chainId", json!([]), Duration::from_secs(1)).await
     }
 
     pub async fn get_block_by_number(
@@ -119,18 +110,15 @@ impl EthereumRPC {
     ) -> eyre::Result<Option<ExecutionBlock>> {
         let return_full_transaction_objects = false;
         let params = json!([block_number, return_full_transaction_objects]);
-        self.rpc_request("eth_getBlockByNumber", params, Duration::from_secs(1))
-            .await
+        self.rpc_request("eth_getBlockByNumber", params, Duration::from_secs(1)).await
     }
 
     pub async fn txpool_status(&self) -> eyre::Result<TxpoolStatus> {
-        self.rpc_request("txpool_status", json!([]), Duration::from_secs(1))
-            .await
+        self.rpc_request("txpool_status", json!([]), Duration::from_secs(1)).await
     }
 
     pub async fn txpool_inspect(&self) -> eyre::Result<TxpoolInspect> {
-        self.rpc_request("txpool_inspect", json!([]), Duration::from_secs(1))
-            .await
+        self.rpc_request("txpool_inspect", json!([]), Duration::from_secs(1)).await
     }
 
     /// Call contract method (eth_call)
@@ -147,9 +135,7 @@ impl EthereumRPC {
             "latest"
         ]);
 
-        let result: String = self
-            .rpc_request("eth_call", params, Duration::from_secs(5))
-            .await?;
+        let result: String = self.rpc_request("eth_call", params, Duration::from_secs(5)).await?;
 
         // Remove 0x prefix and decode hex
         let hex_str = result.strip_prefix("0x").unwrap_or(&result);
@@ -159,23 +145,20 @@ impl EthereumRPC {
     /// Send transaction (eth_sendTransaction)
     pub async fn send_transaction(&self, tx: serde_json::Value) -> eyre::Result<serde_json::Value> {
         let params = json!([tx]);
-        self.rpc_request("eth_sendTransaction", params, Duration::from_secs(10))
-            .await
+        self.rpc_request("eth_sendTransaction", params, Duration::from_secs(10)).await
     }
 
     /// Send raw transaction (eth_sendRawTransaction)
     /// Takes a signed transaction in hex format
     pub async fn send_raw_transaction(&self, signed_tx: &str) -> eyre::Result<String> {
         let params = json!([signed_tx]);
-        self.rpc_request("eth_sendRawTransaction", params, Duration::from_secs(10))
-            .await
+        self.rpc_request("eth_sendRawTransaction", params, Duration::from_secs(10)).await
     }
 
     /// Get transaction count / nonce (eth_getTransactionCount)
     pub async fn get_transaction_count(&self, address: &str, block: &str) -> eyre::Result<String> {
         let params = json!([address, block]);
-        self.rpc_request("eth_getTransactionCount", params, Duration::from_secs(5))
-            .await
+        self.rpc_request("eth_getTransactionCount", params, Duration::from_secs(5)).await
     }
 
     /// eth_call wrapper for contracts
@@ -188,9 +171,7 @@ impl EthereumRPC {
             "latest"
         ]);
 
-        let result: String = self
-            .rpc_request("eth_call", params, Duration::from_secs(5))
-            .await?;
+        let result: String = self.rpc_request("eth_call", params, Duration::from_secs(5)).await?;
 
         // Remove 0x prefix and decode hex
         let hex_str = result.strip_prefix("0x").unwrap_or(&result);
@@ -203,8 +184,7 @@ impl EthereumRPC {
         tx_hash: &str,
     ) -> eyre::Result<Option<TransactionReceipt>> {
         let params = json!([tx_hash]);
-        self.rpc_request("eth_getTransactionReceipt", params, Duration::from_secs(5))
-            .await
+        self.rpc_request("eth_getTransactionReceipt", params, Duration::from_secs(5)).await
     }
 
     /// Get transaction status (eth_getTransactionByHash)
@@ -213,8 +193,7 @@ impl EthereumRPC {
         tx_hash: &str,
     ) -> eyre::Result<Option<Transaction>> {
         let params = json!([tx_hash]);
-        self.rpc_request("eth_getTransactionByHash", params, Duration::from_secs(5))
-            .await
+        self.rpc_request("eth_getTransactionByHash", params, Duration::from_secs(5)).await
     }
 
     /// Get account balance (eth_getBalance)
@@ -223,20 +202,17 @@ impl EthereumRPC {
         address: malachitebft_eth_types::Address,
     ) -> eyre::Result<String> {
         let params = json!([format!("0x{}", address), "latest"]);
-        self.rpc_request("eth_getBalance", params, Duration::from_secs(5))
-            .await
+        self.rpc_request("eth_getBalance", params, Duration::from_secs(5)).await
     }
 
     /// Get gas price (eth_gasPrice)
     pub async fn get_gas_price(&self) -> eyre::Result<String> {
-        self.rpc_request("eth_gasPrice", json!([]), Duration::from_secs(5))
-            .await
+        self.rpc_request("eth_gasPrice", json!([]), Duration::from_secs(5)).await
     }
 
     /// Estimate gas (eth_estimateGas)
     pub async fn estimate_gas(&self, tx: serde_json::Value) -> eyre::Result<String> {
         let params = json!([tx]);
-        self.rpc_request("eth_estimateGas", params, Duration::from_secs(5))
-            .await
+        self.rpc_request("eth_estimateGas", params, Duration::from_secs(5)).await
     }
 }

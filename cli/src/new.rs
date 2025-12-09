@@ -18,13 +18,9 @@ where
 {
     if deterministic {
         let mut rng = StdRng::seed_from_u64(0x42);
-        (0..size)
-            .map(|_| node.generate_private_key(&mut rng))
-            .collect()
+        (0..size).map(|_| node.generate_private_key(&mut rng)).collect()
     } else {
-        (0..size)
-            .map(|_| node.generate_private_key(OsRng))
-            .collect()
+        (0..size).map(|_| node.generate_private_key(OsRng)).collect()
     }
 }
 
@@ -40,9 +36,7 @@ where
 {
     let validators: Vec<_> = if deterministic {
         let mut rng = StdRng::seed_from_u64(0x42);
-        pks.into_iter()
-            .map(|pk| (pk, rng.gen_range(MIN_VOTING_POWER..=MAX_VOTING_POWER)))
-            .collect()
+        pks.into_iter().map(|pk| (pk, rng.gen_range(MIN_VOTING_POWER..=MAX_VOTING_POWER))).collect()
     } else {
         pks.into_iter()
             .map(|pk| (pk, OsRng.gen_range(MIN_VOTING_POWER..=MAX_VOTING_POWER)))

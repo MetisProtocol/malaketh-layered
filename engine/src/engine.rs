@@ -35,10 +35,8 @@ impl Engine {
     ) -> eyre::Result<BlockHash> {
         debug!("🟠 set_latest_forkchoice_state: {:?}", head_block_hash);
 
-        let ForkchoiceUpdated {
-            payload_status,
-            payload_id,
-        } = self.api.forkchoice_updated(head_block_hash, None).await?;
+        let ForkchoiceUpdated { payload_status, payload_id } =
+            self.api.forkchoice_updated(head_block_hash, None).await?;
 
         assert!(payload_id.is_none(), "Payload ID should be None!");
 
@@ -92,13 +90,8 @@ impl Engine {
             // Cannot be None in V3.
             parent_beacon_block_root: Some(block_hash),
         };
-        let ForkchoiceUpdated {
-            payload_status,
-            payload_id,
-        } = self
-            .api
-            .forkchoice_updated(block_hash, Some(payload_attributes))
-            .await?;
+        let ForkchoiceUpdated { payload_status, payload_id } =
+            self.api.forkchoice_updated(block_hash, Some(payload_attributes)).await?;
 
         assert_eq!(payload_status.latest_valid_hash, Some(block_hash));
 
@@ -120,9 +113,7 @@ impl Engine {
         versioned_hashes: Vec<B256>,
     ) -> eyre::Result<PayloadStatus> {
         let parent_block_hash = execution_payload.payload_inner.payload_inner.parent_hash;
-        self.api
-            .new_payload(execution_payload, versioned_hashes, parent_block_hash)
-            .await
+        self.api.new_payload(execution_payload, versioned_hashes, parent_block_hash).await
     }
 
     pub async fn sleep_for_block_interval(
@@ -160,9 +151,6 @@ impl Engine {
     }
 
     fn _timestamp_now_millis(&self) -> u64 {
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64
+        SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64
     }
 }

@@ -69,21 +69,13 @@ impl Spammer {
         // Spawn spammer.
         let spammer_handle = tokio::spawn({
             let self_arc = Arc::clone(&self_arc);
-            async move {
-                self_arc
-                    .spammer(result_sender, report_sender, finish_sender)
-                    .await
-            }
+            async move { self_arc.spammer(result_sender, report_sender, finish_sender).await }
         });
 
         // Spawn result tracker.
         let tracker_handle = tokio::spawn({
             let self_arc = Arc::clone(&self_arc);
-            async move {
-                self_arc
-                    .tracker(result_receiver, report_receiver, finish_receiver)
-                    .await
-            }
+            async move { self_arc.tracker(result_receiver, report_receiver, finish_receiver).await }
         });
 
         let _ = tokio::join!(spammer_handle, tracker_handle);
@@ -92,10 +84,8 @@ impl Spammer {
 
     // Fetch from an Ethereum node the latest used nonce for the given address.
     async fn get_latest_nonce(&self, address: Address) -> Result<u64> {
-        let response: String = self
-            .client
-            .rpc_request("eth_getTransactionCount", json!([address]))
-            .await?;
+        let response: String =
+            self.client.rpc_request("eth_getTransactionCount", json!([address])).await?;
         // Convert hex string to integer.
         let hex_str = response.as_str().strip_prefix("0x").unwrap();
         Ok(u64::from_str_radix(hex_str, 16)?)
@@ -246,10 +236,7 @@ impl Stats {
     }
 
     fn incr_err(&mut self, error: &str) {
-        self.errors_counter
-            .entry(error.to_string())
-            .and_modify(|count| *count += 1)
-            .or_insert(1);
+        self.errors_counter.entry(error.to_string()).and_modify(|count| *count += 1).or_insert(1);
     }
 
     fn add(&mut self, other: &Self) {

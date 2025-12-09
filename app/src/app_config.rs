@@ -14,10 +14,7 @@ pub struct PruneConfig {
 
 impl Default for PruneConfig {
     fn default() -> Self {
-        PruneConfig {
-            enabled: true,
-            retain_heights: 5000,
-        }
+        PruneConfig { enabled: true, retain_heights: 5000 }
     }
 }
 

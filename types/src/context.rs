@@ -43,9 +43,7 @@ impl Context for TestContext {
             (height - 1 + round) % validator_set.count()
         };
 
-        validator_set
-            .get_by_index(proposer_index)
-            .expect("proposer_index is valid")
+        validator_set.get_by_index(proposer_index).expect("proposer_index is valid")
     }
 
     fn new_proposal(

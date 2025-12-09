@@ -129,12 +129,7 @@ impl DistributedTestnetCmd {
             self.deterministic,
             settings,
         )
-        .map_err(|e| {
-            eyre!(
-                "Failed to generate distributed testnet configuration: {:?}",
-                e
-            )
-        })
+        .map_err(|e| eyre!("Failed to generate distributed testnet configuration: {:?}", e))
     }
 }
 
@@ -156,16 +151,11 @@ where
         + CanMakePrivateKeyFile,
 {
     let private_keys = crate::new::generate_private_keys(node, nodes, deterministic);
-    let public_keys = private_keys
-        .iter()
-        .map(|pk| node.get_public_key(pk))
-        .collect();
+    let public_keys = private_keys.iter().map(|pk| node.get_public_key(pk)).collect();
     let genesis = crate::new::generate_genesis(node, public_keys, deterministic);
 
     for (i, private_key) in private_keys.iter().enumerate().take(nodes) {
-        let node_home_dir = home_dir
-            .join((i % machines.len()).to_string())
-            .join(i.to_string());
+        let node_home_dir = home_dir.join((i % machines.len()).to_string()).join(i.to_string());
 
         info!(
             id = %i,
@@ -173,10 +163,7 @@ where
             "Generating configuration for node..."
         );
 
-        let args = Args {
-            home: Some(node_home_dir),
-            ..Args::default()
-        };
+        let args = Args { home: Some(node_home_dir), ..Args::default() };
 
         save_config::<N>(
             &args.get_config_file_path()?,

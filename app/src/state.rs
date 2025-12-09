@@ -87,9 +87,8 @@ enum SignatureVerificationError {
 // each round.
 fn seed_from_address(address: &Address) -> u64 {
     address.into_inner().chunks(8).fold(0u64, |acc, chunk| {
-        let term = chunk.iter().fold(0u64, |acc, &x| {
-            acc.wrapping_shl(8).wrapping_add(u64::from(x))
-        });
+        let term =
+            chunk.iter().fold(0u64, |acc, &x| acc.wrapping_shl(8).wrapping_add(u64::from(x)));
         acc.wrapping_add(term)
     })
 }
@@ -141,10 +140,7 @@ impl State {
 
     /// Returns the earliest height available in the state
     pub async fn get_earliest_height(&self) -> Height {
-        self.store
-            .min_decided_value_height()
-            .await
-            .unwrap_or_default()
+        self.store.min_decided_value_height().await.unwrap_or_default()
     }
 
     /// Processes and adds a new proposal to the state if it's valid
@@ -202,8 +198,7 @@ impl State {
 
         // Store the proposal and its data
         self.store.store_undecided_proposal(value.clone()).await?;
-        self.store_undecided_proposal_data(parts.height, parts.round, data)
-            .await?;
+        self.store_undecided_proposal_data(parts.height, parts.round, data).await?;
 
         Ok(Some(value))
     }
@@ -234,20 +229,12 @@ impl State {
 
     /// Retrieves a decided block data at the given height
     pub async fn get_block_data(&self, height: Height, round: Round) -> Option<Bytes> {
-        self.store
-            .get_block_data(height, round)
-            .await
-            .ok()
-            .flatten()
+        self.store.get_block_data(height, round).await.ok().flatten()
     }
 
     /// Retrieves a decided block data at the given height
     pub async fn get_decided_block_data(&self, height: Height) -> Option<Bytes> {
-        self.store
-            .get_decided_block_data(height)
-            .await
-            .ok()
-            .flatten()
+        self.store.get_decided_block_data(height).await.ok().flatten()
     }
 
     /// Commits a value with the given certificate, updating internal state
@@ -262,10 +249,8 @@ impl State {
             "Looking for certificate"
         );
 
-        let proposal = self
-            .store
-            .get_undecided_proposal(certificate.height, certificate.round)
-            .await;
+        let proposal =
+            self.store.get_undecided_proposal(certificate.height, certificate.round).await;
 
         let proposal = match proposal {
             Ok(Some(proposal)) => proposal,
@@ -281,15 +266,10 @@ impl State {
             Err(e) => return Err(e.into()),
         };
 
-        self.store
-            .store_decided_value(&certificate, proposal.value)
-            .await?;
+        self.store.store_decided_value(&certificate, proposal.value).await?;
 
         // Store block data for decided value
-        let block_data = self
-            .store
-            .get_block_data(certificate.height, certificate.round)
-            .await?;
+        let block_data = self.store.get_block_data(certificate.height, certificate.round).await?;
 
         // Log first 32 bytes of block data with JNT prefix
         if let Some(data) = &block_data {
@@ -299,18 +279,13 @@ impl State {
         }
 
         if let Some(data) = block_data {
-            self.store
-                .store_decided_block_data(certificate.height, data)
-                .await?;
+            self.store.store_decided_block_data(certificate.height, data).await?;
         }
 
         // Prune the store based on configuration
         if self.prune_config.enabled {
             let retain_height = Height::new(
-                certificate
-                    .height
-                    .as_u64()
-                    .saturating_sub(self.prune_config.retain_heights),
+                certificate.height.as_u64().saturating_sub(self.prune_config.retain_heights),
             );
             info!(
                 "Pruning store enabled, retaining {} heights (keeping data from height {} onwards)",
@@ -386,15 +361,9 @@ impl State {
         };
 
         // Insert the new proposal into the undecided proposals.
-        self.store
-            .store_undecided_proposal(proposal.clone())
-            .await?;
+        self.store.store_undecided_proposal(proposal.clone()).await?;
 
-        Ok(LocallyProposedValue::new(
-            proposal.height,
-            proposal.round,
-            proposal.value,
-        ))
+        Ok(LocallyProposedValue::new(proposal.height, proposal.round, proposal.value))
     }
 
     fn stream_id(&mut self) -> StreamId {
@@ -516,10 +485,8 @@ impl State {
         // Retrieve the public key of the proposer
         // Note: We need to get epoch_length from config in production
         // For now, using a reasonable default value
-        let public_key = self
-            .get_current_validator_set()
-            .get_by_address(&parts.proposer)
-            .map(|v| v.public_key);
+        let public_key =
+            self.get_current_validator_set().get_by_address(&parts.proposer).map(|v| v.public_key);
 
         let public_key = public_key.ok_or(SignatureVerificationError::ProposerNotFound)?;
 
@@ -537,12 +504,8 @@ impl State {
 /// This is done by multiplying all the factors in the parts.
 fn assemble_value_from_parts(parts: ProposalParts) -> (ProposedValue<TestContext>, Bytes) {
     // Calculate total size and allocate buffer
-    let total_size: usize = parts
-        .parts
-        .iter()
-        .filter_map(|part| part.as_data())
-        .map(|data| data.bytes.len())
-        .sum();
+    let total_size: usize =
+        parts.parts.iter().filter_map(|part| part.as_data()).map(|data| data.bytes.len()).sum();
 
     let mut data = Vec::with_capacity(total_size);
     // Concatenate all chunks

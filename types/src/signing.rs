@@ -92,9 +92,7 @@ impl SigningProvider<TestContext> for Ed25519Provider {
         signature: &Signature,
         public_key: &PublicKey,
     ) -> bool {
-        public_key
-            .verify(&proposal_part.to_sign_bytes(), signature)
-            .is_ok()
+        public_key.verify(&proposal_part.to_sign_bytes(), signature).is_ok()
     }
 
     // #[cfg_attr(coverage_nightly, coverage(off))]
