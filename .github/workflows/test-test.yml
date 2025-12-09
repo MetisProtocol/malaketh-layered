@@ -1,0 +1,9 @@
+name: Basic Test
+on: [push, pull_request]  # 推代码/提PR时触发
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run test
+        run: echo "Running tests..."  # 替换为实际测试命令（如 npm test）
