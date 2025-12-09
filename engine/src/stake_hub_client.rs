@@ -30,9 +30,10 @@ impl Ord for ValidatorElectionInfo {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.voting_power.cmp(&other.voting_power) {
             // If the voting power is the same, we compare the address as string.
-            Ordering::Equal => {
-                other.consensus_address.to_string().cmp(&self.consensus_address.to_string())
-            }
+            Ordering::Equal => other
+                .consensus_address
+                .to_string()
+                .cmp(&self.consensus_address.to_string()),
             other => other,
         }
     }
@@ -58,15 +59,27 @@ impl StakeHubClient {
         let abi_str = include_str!("system_contracts/abis/StakeHub.json");
         let stake_hub_abi: JsonAbi = serde_json::from_str(abi_str)?;
 
-        Ok(Self { eth_rpc, stake_hub_address, stake_hub_abi })
+        Ok(Self {
+            eth_rpc,
+            stake_hub_address,
+            stake_hub_abi,
+        })
     }
 
     /// Get epoch length from StakeHub contract
     pub async fn get_epoch_length(&self) -> Result<u64> {
-        let function = self.stake_hub_abi.function("epochLength").unwrap().first().unwrap();
+        let function = self
+            .stake_hub_abi
+            .function("epochLength")
+            .unwrap()
+            .first()
+            .unwrap();
 
         let call_data = function.abi_encode_input(&[])?;
-        let result = self.eth_rpc.eth_call(&self.stake_hub_address.to_string(), &call_data).await?;
+        let result = self
+            .eth_rpc
+            .eth_call(&self.stake_hub_address.to_string(), &call_data)
+            .await?;
 
         let output = function.abi_decode_output(&result, false)?;
         let epoch_length: U256 = output[0].as_uint().unwrap().0;
@@ -75,11 +88,18 @@ impl StakeHubClient {
 
     /// Get max elected validators from StakeHub contract
     pub async fn get_max_elected_validators(&self) -> Result<U256> {
-        let function =
-            self.stake_hub_abi.function("maxElectedValidators").unwrap().first().unwrap();
+        let function = self
+            .stake_hub_abi
+            .function("maxElectedValidators")
+            .unwrap()
+            .first()
+            .unwrap();
 
         let call_data = function.abi_encode_input(&[])?;
-        let result = self.eth_rpc.eth_call(&self.stake_hub_address.to_string(), &call_data).await?;
+        let result = self
+            .eth_rpc
+            .eth_call(&self.stake_hub_address.to_string(), &call_data)
+            .await?;
 
         let output = function.abi_decode_output(&result, false)?;
         let max_elected = output[0].as_uint().unwrap().0;
@@ -91,15 +111,22 @@ impl StakeHubClient {
     pub async fn get_validator_election_info(
         &self,
     ) -> Result<(Vec<Address>, Vec<U256>, Vec<Address>, Vec<Vec<u8>>, U256)> {
-        let function =
-            self.stake_hub_abi.function("getValidatorElectionInfo").unwrap().first().unwrap();
+        let function = self
+            .stake_hub_abi
+            .function("getValidatorElectionInfo")
+            .unwrap()
+            .first()
+            .unwrap();
 
         let call_data = function.abi_encode_input(&[
             DynSolValue::from(U256::from(0)),
             DynSolValue::from(U256::from(0)),
         ])?;
 
-        let result = self.eth_rpc.eth_call(&self.stake_hub_address.to_string(), &call_data).await?;
+        let result = self
+            .eth_rpc
+            .eth_call(&self.stake_hub_address.to_string(), &call_data)
+            .await?;
         let output = function.abi_decode_output(&result, false)?;
 
         let consensus_addresses = output[0]
@@ -109,11 +136,19 @@ impl StakeHubClient {
             .map(|val| val.as_address().unwrap())
             .collect::<Vec<_>>();
 
-        let voting_powers =
-            output[1].as_array().unwrap().iter().map(|val| val.as_uint().unwrap().0).collect();
+        let voting_powers = output[1]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|val| val.as_uint().unwrap().0)
+            .collect();
 
-        let operator_addresses =
-            output[2].as_array().unwrap().iter().map(|val| val.as_address().unwrap()).collect();
+        let operator_addresses = output[2]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|val| val.as_address().unwrap())
+            .collect();
 
         let tendermint_pub_keys = output[3]
             .as_array()
@@ -153,14 +188,16 @@ impl StakeHubClient {
             .zip(voting_powers.into_iter())
             .zip(operator_addresses.into_iter())
             .zip(tendermint_pub_keys.into_iter())
-            .map(|(((consensus_address, voting_power), operator_address), tendermint_pub_key)| {
-                ValidatorElectionInfo {
-                    consensus_address,
-                    voting_power,
-                    operator_address,
-                    tendermint_pub_key,
-                }
-            })
+            .map(
+                |(((consensus_address, voting_power), operator_address), tendermint_pub_key)| {
+                    ValidatorElectionInfo {
+                        consensus_address,
+                        voting_power,
+                        operator_address,
+                        tendermint_pub_key,
+                    }
+                },
+            )
             .collect();
 
         // Apply the selection algorithm
@@ -184,7 +221,11 @@ fn get_top_validators_by_voting_power(
     }
 
     let top_n = max_elected.to::<u64>() as usize;
-    let top_n = if top_n > validator_heap.len() { validator_heap.len() } else { top_n };
+    let top_n = if top_n > validator_heap.len() {
+        validator_heap.len()
+    } else {
+        top_n
+    };
 
     let mut elected_validators = Vec::with_capacity(top_n);
     let mut elected_voting_powers = Vec::with_capacity(top_n);

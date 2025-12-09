@@ -93,7 +93,11 @@ pub struct ProposalInit {
 
 impl ProposalInit {
     pub fn new(height: Height, round: Round, proposer: Address) -> Self {
-        Self { height, round, proposer }
+        Self {
+            height,
+            round,
+            proposer,
+        }
     }
 }
 
@@ -125,7 +129,9 @@ impl Protobuf for ProposalPart {
     fn from_proto(proto: Self::Proto) -> Result<Self, ProtoError> {
         use crate::proto::proposal_part::Part;
 
-        let part = proto.part.ok_or_else(|| ProtoError::missing_field::<Self::Proto>("part"))?;
+        let part = proto
+            .part
+            .ok_or_else(|| ProtoError::missing_field::<Self::Proto>("part"))?;
 
         match part {
             Part::Init(init) => Ok(Self::Init(ProposalInit {
@@ -159,7 +165,9 @@ impl Protobuf for ProposalPart {
                 })),
             }),
             Self::Data(data) => Ok(Self::Proto {
-                part: Some(Part::Data(proto::ProposalData { bytes: data.bytes.clone() })),
+                part: Some(Part::Data(proto::ProposalData {
+                    bytes: data.bytes.clone(),
+                })),
             }),
             Self::Fin(fin) => Ok(Self::Proto {
                 part: Some(Part::Fin(proto::ProposalFin {

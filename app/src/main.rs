@@ -87,7 +87,8 @@ fn start(args: &Args, _cmd: &StartCmd) -> Result<()> {
     };
 
     // Start the node
-    rt.block_on(app.run()).map_err(|error| eyre!("Failed to run the application node: {error}"))
+    rt.block_on(app.run())
+        .map_err(|error| eyre!("Failed to run the application node: {error}"))
 }
 
 fn init(args: &Args, cmd: &InitCmd) -> Result<()> {

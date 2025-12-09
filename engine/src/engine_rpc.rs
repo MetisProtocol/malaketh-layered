@@ -111,7 +111,12 @@ impl EngineRPC {
         params: serde_json::Value,
         timeout: Duration,
     ) -> eyre::Result<D> {
-        let body = JsonRequestBody { jsonrpc: "2.0", method, params, id: json!(1) };
+        let body = JsonRequestBody {
+            jsonrpc: "2.0",
+            method,
+            params,
+            id: json!(1),
+        };
         let token = self.auth.generate_token()?;
         let request = self
             .client
@@ -123,7 +128,11 @@ impl EngineRPC {
         let body: JsonResponseBody = request.send().await?.error_for_status()?.json().await?;
 
         if let Some(error) = body.error {
-            Err(eyre::eyre!("Server Message: code: {}, message: {}", error.code, error.message,))
+            Err(eyre::eyre!(
+                "Server Message: code: {}, message: {}",
+                error.code,
+                error.message,
+            ))
         } else {
             serde_json::from_value(body.result).map_err(Into::into)
         }
@@ -187,7 +196,11 @@ impl EngineRPC {
         payload_id: AlloyPayloadId,
     ) -> eyre::Result<ExecutionPayloadV3> {
         let response: ExecutionPayloadEnvelopeV3 = self
-            .rpc_request(ENGINE_GET_PAYLOAD_V3, json!([payload_id]), ENGINE_GET_PAYLOAD_TIMEOUT)
+            .rpc_request(
+                ENGINE_GET_PAYLOAD_V3,
+                json!([payload_id]),
+                ENGINE_GET_PAYLOAD_TIMEOUT,
+            )
             .await?;
         Ok(response.execution_payload)
     }
@@ -200,6 +213,7 @@ impl EngineRPC {
     ) -> eyre::Result<PayloadStatus> {
         let payload = JsonExecutionPayloadV3::from(execution_payload);
         let params = json!([payload, versioned_hashes, parent_block_hash]);
-        self.rpc_request(ENGINE_NEW_PAYLOAD_V3, params, ENGINE_NEW_PAYLOAD_TIMEOUT).await
+        self.rpc_request(ENGINE_NEW_PAYLOAD_V3, params, ENGINE_NEW_PAYLOAD_TIMEOUT)
+            .await
     }
 }
