@@ -187,10 +187,7 @@ impl Node for App {
                 let url = config.engine.eth_url.as_str();
                 Url::parse(url)?
             };
-            Engine::new(
-                EngineRPC::new(engine_url, jwt_path.as_path())?,
-                EthereumRPC::new(eth_url)?,
-            )
+            Engine::new(EngineRPC::new(engine_url, jwt_path.as_path())?, EthereumRPC::new(eth_url)?)
         };
 
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
@@ -241,10 +238,7 @@ impl App {
         let eth_url = Url::parse(&eth_url_str)?;
         let eth_rpc = EthereumRPC::new(eth_url)?;
 
-        info!(
-            "📡 Connecting to Reth at {} to fetch genesis block...",
-            eth_url_str
-        );
+        info!("📡 Connecting to Reth at {} to fetch genesis block...", eth_url_str);
 
         // Step 2: Get genesis block from Reth
         let genesis_block = eth_rpc
@@ -254,10 +248,7 @@ impl App {
 
         info!("✅ Got genesis block from Reth");
         info!("   Block hash: {}", genesis_block.block_hash);
-        info!(
-            "   ExtraData length: {} bytes",
-            genesis_block.extra_data.len()
-        );
+        info!("   ExtraData length: {} bytes", genesis_block.extra_data.len());
         info!(
             "   ExtraData hex: 0x{}...",
             hex::encode(
@@ -319,10 +310,7 @@ impl App {
             return Err(eyre::eyre!("No validators found in genesis extraData"));
         }
 
-        info!(
-            "🎉 Successfully built initial validator set with {} validators",
-            validators.len()
-        );
+        info!("🎉 Successfully built initial validator set with {} validators", validators.len());
 
         Ok((ValidatorSet::new(validators), epoch_length))
     }
@@ -335,11 +323,8 @@ impl App {
         config: &Config,
     ) -> eyre::Result<(ValidatorSet, u64, Height)> {
         // 1. Try to restore height from store
-        let current_height = store
-            .max_decided_value_height()
-            .await
-            .map(|h| h.increment())
-            .unwrap_or(Height::new(1));
+        let current_height =
+            store.max_decided_value_height().await.map(|h| h.increment()).unwrap_or(Height::new(1));
 
         info!("🔍 Checking storage for existing state...");
         info!("   Current height from storage: {}", current_height);
@@ -381,11 +366,7 @@ impl App {
                 let blocks_since_snapshot = current_height.as_u64() - snapshot.height.as_u64();
                 info!("   Age: {} blocks", blocks_since_snapshot);
 
-                return Ok((
-                    snapshot.validator_set,
-                    snapshot.epoch_length,
-                    current_height,
-                ));
+                return Ok((snapshot.validator_set, snapshot.epoch_length, current_height));
             }
 
             // 2.3 No snapshot found: data corruption
@@ -401,9 +382,7 @@ impl App {
 
 impl CanMakeGenesis for App {
     fn make_genesis(&self, validators: Vec<(PublicKey, VotingPower)>) -> Self::Genesis {
-        let validators = validators
-            .into_iter()
-            .map(|(pk, vp)| Validator::new(pk, vp));
+        let validators = validators.into_iter().map(|(pk, vp)| Validator::new(pk, vp));
 
         let validator_set = ValidatorSet::new(validators);
 
@@ -458,32 +437,20 @@ fn make_config(index: usize, total: usize, settings: MakeConfigSettings) -> Conf
                 listen_addr: settings.transport.multiaddr("127.0.0.1", consensus_port),
                 persistent_peers: if settings.discovery.enabled {
                     let mut rng = rand::thread_rng();
-                    let count = if total > 1 {
-                        rng.gen_range(1..=(total / 2))
-                    } else {
-                        0
-                    };
-                    let peers = (0..total)
-                        .filter(|j| *j != index)
-                        .choose_multiple(&mut rng, count);
+                    let count = if total > 1 { rng.gen_range(1..=(total / 2)) } else { 0 };
+                    let peers = (0..total).filter(|j| *j != index).choose_multiple(&mut rng, count);
 
                     peers
                         .iter()
                         .unique()
                         .map(|index| {
-                            settings
-                                .transport
-                                .multiaddr("127.0.0.1", CONSENSUS_BASE_PORT + index)
+                            settings.transport.multiaddr("127.0.0.1", CONSENSUS_BASE_PORT + index)
                         })
                         .collect()
                 } else {
                     (0..total)
                         .filter(|j| *j != index)
-                        .map(|j| {
-                            settings
-                                .transport
-                                .multiaddr("127.0.0.1", CONSENSUS_BASE_PORT + j)
-                        })
+                        .map(|j| settings.transport.multiaddr("127.0.0.1", CONSENSUS_BASE_PORT + j))
                         .collect()
                 },
                 discovery: settings.discovery,

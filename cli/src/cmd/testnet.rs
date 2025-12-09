@@ -30,8 +30,7 @@ impl FromStr for RuntimeFlavour {
         if s.contains(':') {
             match s.split_once(':') {
                 Some(("multi-threaded", n)) => Ok(RuntimeFlavour::MultiThreaded(
-                    n.parse()
-                        .map_err(|_| "Invalid number of threads".to_string())?,
+                    n.parse().map_err(|_| "Invalid number of threads".to_string())?,
                 )),
                 _ => Err(format!("Invalid runtime flavour: {s}")),
             }
@@ -156,10 +155,7 @@ where
     N: Node + CanMakeConfig + CanMakePrivateKeyFile + CanGeneratePrivateKey + CanMakeGenesis,
 {
     let private_keys = crate::new::generate_private_keys(node, nodes, deterministic);
-    let public_keys = private_keys
-        .iter()
-        .map(|pk| node.get_public_key(pk))
-        .collect();
+    let public_keys = private_keys.iter().map(|pk| node.get_public_key(pk)).collect();
     let genesis = crate::new::generate_genesis(node, public_keys, deterministic);
 
     for (i, private_key) in private_keys.iter().enumerate().take(nodes) {
@@ -173,16 +169,10 @@ where
         );
 
         // Set the destination folder
-        let args = Args {
-            home: Some(node_home_dir),
-            ..Args::default()
-        };
+        let args = Args { home: Some(node_home_dir), ..Args::default() };
 
         // Save config
-        save_config::<N>(
-            &args.get_config_file_path()?,
-            &N::make_config(i, nodes, settings),
-        )?;
+        save_config::<N>(&args.get_config_file_path()?, &N::make_config(i, nodes, settings))?;
 
         // Save private key
         let priv_validator_key = node.make_private_key_file((*private_key).clone());

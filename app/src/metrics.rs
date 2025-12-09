@@ -87,11 +87,7 @@ impl DbMetrics {
         let metrics = Self::new();
 
         registry.with_prefix("app_channel", |registry| {
-            registry.register(
-                "db_size",
-                "Size of the database (bytes)",
-                metrics.db_size.clone(),
-            );
+            registry.register("db_size", "Size of the database (bytes)", metrics.db_size.clone());
 
             registry.register(
                 "db_write_bytes_total",

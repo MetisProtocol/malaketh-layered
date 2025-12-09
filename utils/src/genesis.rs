@@ -15,17 +15,11 @@ const TEST_MNEMONICS: [&str; 3] = [
 
 /// Create a signer from a mnemonic.
 pub(crate) fn make_signer(mnemonic: &str) -> LocalSigner<SigningKey> {
-    MnemonicBuilder::<English>::default()
-        .phrase(mnemonic)
-        .build()
-        .expect("Failed to create wallet")
+    MnemonicBuilder::<English>::default().phrase(mnemonic).build().expect("Failed to create wallet")
 }
 
 pub(crate) fn make_signers() -> Vec<LocalSigner<SigningKey>> {
-    TEST_MNEMONICS
-        .iter()
-        .map(|&mnemonic| make_signer(mnemonic))
-        .collect()
+    TEST_MNEMONICS.iter().map(|&mnemonic| make_signer(mnemonic)).collect()
 }
 
 pub(crate) fn generate_genesis() -> Result<()> {

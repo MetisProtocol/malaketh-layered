@@ -78,9 +78,7 @@ impl ValidatorSet {
 
         assert!(!validators.is_empty());
 
-        Self {
-            validators: Arc::new(validators),
-        }
+        Self { validators: Arc::new(validators) }
     }
 
     /// Get the number of validators in the set
@@ -105,9 +103,7 @@ impl ValidatorSet {
 
     /// Get a validator by its address
     pub fn get_by_address(&self, address: &Address) -> Option<&Validator> {
-        self.validators
-            .iter()
-            .find(|v| &v.consensus_address == address)
+        self.validators.iter().find(|v| &v.consensus_address == address)
     }
 
     pub fn get_by_public_key(&self, public_key: &PublicKey) -> Option<&Validator> {
