@@ -78,7 +78,10 @@ impl Args {
     pub fn get_home_dir(&self) -> Result<PathBuf, Error> {
         match self.home {
             Some(ref path) => Ok(path.clone()),
-            None => Ok(BaseDirs::new().ok_or(Error::DirPath)?.home_dir().join(APP_FOLDER)),
+            None => Ok(BaseDirs::new()
+                .ok_or(Error::DirPath)?
+                .home_dir()
+                .join(APP_FOLDER)),
         }
     }
 

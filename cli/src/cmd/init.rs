@@ -94,7 +94,14 @@ impl InitCmd {
 
         let config = N::make_config(0, 1, settings);
 
-        init(node, &config, config_file, genesis_file, priv_validator_key_file, self.overwrite)?;
+        init(
+            node,
+            &config,
+            config_file,
+            genesis_file,
+            priv_validator_key_file,
+            self.overwrite,
+        )?;
 
         Ok(())
     }
@@ -138,7 +145,10 @@ where
 
     // Save default genesis
     if genesis_file.exists() && !overwrite {
-        warn!("Genesis file already exists at {:?}, skipping", genesis_file.display())
+        warn!(
+            "Genesis file already exists at {:?}, skipping",
+            genesis_file.display()
+        )
     } else {
         let public_key = node.get_public_key(private_key);
         let genesis = generate_genesis(node, vec![public_key], false);

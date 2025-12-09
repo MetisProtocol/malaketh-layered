@@ -62,9 +62,18 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Genesis { .. } => generate_genesis(),
-        Commands::Spam(SpamCmd { rpc_url, num_txs, rate, time, blobs, signer_index }) => {
+        Commands::Spam(SpamCmd {
+            rpc_url,
+            num_txs,
+            rate,
+            time,
+            blobs,
+            signer_index,
+        }) => {
             let url = format!("http://{rpc_url}").parse()?;
-            Spammer::new(url, signer_index, num_txs, time, rate, blobs)?.run().await
+            Spammer::new(url, signer_index, num_txs, time, rate, blobs)?
+                .run()
+                .await
         }
         Commands::Pubkey(cmd) => pubkey::run_pubkey(cmd),
     }

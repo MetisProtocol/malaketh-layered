@@ -98,6 +98,9 @@ impl Protobuf for Value {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn to_proto(&self) -> Result<Self::Proto, ProtoError> {
-        Ok(proto::Value { value: self.value, extensions: self.extensions.clone() })
+        Ok(proto::Value {
+            value: self.value,
+            extensions: self.extensions.clone(),
+        })
     }
 }

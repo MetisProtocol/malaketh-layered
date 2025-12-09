@@ -54,8 +54,10 @@ impl Codec<Signature> for ProtobufCodec {
 
     fn encode(&self, msg: &Signature) -> Result<Bytes, Self::Error> {
         Ok(Bytes::from(
-            proto::Signature { bytes: Bytes::copy_from_slice(msg.to_bytes().as_ref()) }
-                .encode_to_vec(),
+            proto::Signature {
+                bytes: Bytes::copy_from_slice(msg.to_bytes().as_ref()),
+            }
+            .encode_to_vec(),
         ))
     }
 }
@@ -78,7 +80,9 @@ impl Codec<SignedConsensusMsg<TestContext>> for ProtobufCodec {
         match proto_message {
             proto::signed_message::Message::Proposal(proto) => {
                 let proposal = Proposal::from_proto(proto)?;
-                Ok(SignedConsensusMsg::Proposal(SignedProposal::new(proposal, signature)))
+                Ok(SignedConsensusMsg::Proposal(SignedProposal::new(
+                    proposal, signature,
+                )))
             }
             proto::signed_message::Message::Vote(vote) => {
                 let vote = Vote::from_proto(vote)?;
@@ -91,7 +95,9 @@ impl Codec<SignedConsensusMsg<TestContext>> for ProtobufCodec {
         match msg {
             SignedConsensusMsg::Vote(vote) => {
                 let proto = proto::SignedMessage {
-                    message: Some(proto::signed_message::Message::Vote(vote.message.to_proto()?)),
+                    message: Some(proto::signed_message::Message::Vote(
+                        vote.message.to_proto()?,
+                    )),
                     signature: Some(encode_signature(&vote.signature)),
                 };
                 Ok(Bytes::from(proto.encode_to_vec()))
@@ -193,10 +199,12 @@ impl Codec<LivenessMsg<TestContext>> for ProtobufCodec {
                 // LivenessMsg::PolkaCertificate(decode_polka_certificate(cert)?),
                 // ),
             }
-            Some(proto::liveness_message::Message::RoundCertificate(cert)) => {
-                Ok(LivenessMsg::SkipRoundCertificate(decode_round_certificate(cert)?))
-            }
-            None => Err(ProtoError::missing_field::<proto::LivenessMessage>("message")),
+            Some(proto::liveness_message::Message::RoundCertificate(cert)) => Ok(
+                LivenessMsg::SkipRoundCertificate(decode_round_certificate(cert)?),
+            ),
+            None => Err(ProtoError::missing_field::<proto::LivenessMessage>(
+                "message",
+            )),
         }
     }
 
@@ -319,8 +327,9 @@ impl Codec<sync::Status<TestContext>> for ProtobufCodec {
     fn decode(&self, bytes: Bytes) -> Result<sync::Status<TestContext>, Self::Error> {
         let proto = proto::Status::decode(bytes.as_ref())?;
 
-        let proto_peer_id =
-            proto.peer_id.ok_or_else(|| ProtoError::missing_field::<proto::Status>("peer_id"))?;
+        let proto_peer_id = proto
+            .peer_id
+            .ok_or_else(|| ProtoError::missing_field::<proto::Status>("peer_id"))?;
 
         Ok(sync::Status {
             peer_id: PeerId::from_bytes(proto_peer_id.id.as_ref()).unwrap(),
@@ -331,7 +340,9 @@ impl Codec<sync::Status<TestContext>> for ProtobufCodec {
 
     fn encode(&self, msg: &sync::Status<TestContext>) -> Result<Bytes, Self::Error> {
         let proto = proto::Status {
-            peer_id: Some(proto::PeerId { id: Bytes::from(msg.peer_id.to_bytes()) }),
+            peer_id: Some(proto::PeerId {
+                id: Bytes::from(msg.peer_id.to_bytes()),
+            }),
             height: msg.tip_height.as_u64(),
             earliest_height: msg.history_min_height.as_u64(),
         };
@@ -350,9 +361,9 @@ impl Codec<sync::Request<TestContext>> for ProtobufCodec {
             .ok_or_else(|| ProtoError::missing_field::<proto::SyncRequest>("request"))?;
 
         match request {
-            proto::sync_request::Request::ValueRequest(req) => {
-                Ok(sync::Request::ValueRequest(sync::ValueRequest::new(Height::new(req.height))))
-            }
+            proto::sync_request::Request::ValueRequest(req) => Ok(sync::Request::ValueRequest(
+                sync::ValueRequest::new(Height::new(req.height)),
+            )),
             _ => todo!(),
         }
     }
@@ -360,9 +371,11 @@ impl Codec<sync::Request<TestContext>> for ProtobufCodec {
     fn encode(&self, msg: &sync::Request<TestContext>) -> Result<Bytes, Self::Error> {
         let proto = match msg {
             sync::Request::ValueRequest(req) => proto::SyncRequest {
-                request: Some(proto::sync_request::Request::ValueRequest(proto::ValueRequest {
-                    height: req.height.as_u64(),
-                })),
+                request: Some(proto::sync_request::Request::ValueRequest(
+                    proto::ValueRequest {
+                        height: req.height.as_u64(),
+                    },
+                )),
             },
             // sync::Request::VoteSetRequest(req) => proto::SyncRequest {
             //     request: Some(proto::sync_request::Request::VoteSetRequest(
@@ -414,10 +427,16 @@ pub fn encode_sync_response(
 ) -> Result<proto::SyncResponse, ProtoError> {
     let proto = match response {
         sync::Response::ValueResponse(value_response) => proto::SyncResponse {
-            response: Some(proto::sync_response::Response::ValueResponse(proto::ValueResponse {
-                height: value_response.height.as_u64(),
-                value: value_response.value.as_ref().map(encode_synced_value).transpose()?,
-            })),
+            response: Some(proto::sync_response::Response::ValueResponse(
+                proto::ValueResponse {
+                    height: value_response.height.as_u64(),
+                    value: value_response
+                        .value
+                        .as_ref()
+                        .map(encode_synced_value)
+                        .transpose()?,
+                },
+            )),
         },
     };
 
@@ -545,7 +564,9 @@ pub fn encode_extension(
 
 pub fn encode_vote(vote: &SignedVote<TestContext>) -> Result<proto::SignedMessage, ProtoError> {
     Ok(proto::SignedMessage {
-        message: Some(proto::signed_message::Message::Vote(vote.message.to_proto()?)),
+        message: Some(proto::signed_message::Message::Vote(
+            vote.message.to_proto()?,
+        )),
         signature: Some(encode_signature(&vote.signature)),
     })
 }
@@ -557,7 +578,9 @@ pub fn decode_vote(msg: proto::SignedMessage) -> Result<SignedVote<TestContext>,
 
     let vote = match msg.message {
         Some(proto::signed_message::Message::Vote(v)) => Ok(v),
-        _ => Err(ProtoError::Other("Invalid message type: not a vote".to_string())),
+        _ => Err(ProtoError::Other(
+            "Invalid message type: not a vote".to_string(),
+        )),
     }?;
 
     let signature = decode_signature(signature)?;
@@ -588,7 +611,9 @@ pub fn decode_vote_set(vote_set: proto::VoteSet) -> Result<VoteSet<TestContext>,
 */
 
 pub fn encode_signature(signature: &Signature) -> proto::Signature {
-    proto::Signature { bytes: Bytes::copy_from_slice(signature.to_bytes().as_ref()) }
+    proto::Signature {
+        bytes: Bytes::copy_from_slice(signature.to_bytes().as_ref()),
+    }
 }
 
 pub fn decode_signature(signature: proto::Signature) -> Result<Signature, ProtoError> {

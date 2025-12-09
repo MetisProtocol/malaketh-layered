@@ -54,7 +54,10 @@ const TARGET_CRATES: &[&str] = &["informalsystems_malachitebft", "malachitebft_e
 pub fn default_directive(log_level: LogLevel) -> String {
     use itertools::Itertools;
 
-    TARGET_CRATES.iter().map(|&c| format!("{c}={log_level}")).join(",")
+    TARGET_CRATES
+        .iter()
+        .map(|&c| format!("{c}={log_level}"))
+        .join(",")
 }
 
 /// Builds a tracing filter based on the input `log_level`.

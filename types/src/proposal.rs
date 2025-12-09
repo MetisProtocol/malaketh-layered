@@ -22,7 +22,13 @@ impl Proposal {
         pol_round: Round,
         validator_address: Address,
     ) -> Self {
-        Self { height, round, value, pol_round, validator_address }
+        Self {
+            height,
+            round,
+            value,
+            pol_round,
+            validator_address,
+        }
     }
 
     pub fn to_bytes(&self) -> Bytes {
@@ -76,7 +82,9 @@ impl Protobuf for Proposal {
             height: Height::from_proto(proto.height)?,
             round: Round::new(proto.round),
             value: Value::from_proto(
-                proto.value.ok_or_else(|| ProtoError::missing_field::<Self::Proto>("value"))?,
+                proto
+                    .value
+                    .ok_or_else(|| ProtoError::missing_field::<Self::Proto>("value"))?,
             )?,
             pol_round: Round::from(proto.pol_round),
             validator_address: Address::from_proto(
