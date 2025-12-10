@@ -49,7 +49,6 @@ mod tests {
     #[test]
     fn test_genesis() {
         let genesis: Genesis = serde_json::from_str(VALIDATOR_SET_JSON).unwrap();
-
         assert_eq!(genesis.validator_set.validators.len(), 3);
         assert_eq!(genesis.validator_set.validators[0].voting_power, 1);
     }
