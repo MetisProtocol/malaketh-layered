@@ -53,10 +53,4 @@ mod tests {
         assert_eq!(genesis.validator_set.validators.len(), 3);
         assert_eq!(genesis.validator_set.validators[0].voting_power, 1);
     }
-
-    #[test]
-    fn test_failed() {
-        assert_eq!(1, 2);
-        assert_eq!(1, 2);
-    }
 }
