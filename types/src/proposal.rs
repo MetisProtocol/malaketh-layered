@@ -25,8 +25,12 @@ impl Proposal {
         Self { height, round, value, pol_round, validator_address }
     }
 
-    pub fn to_bytes(&self) -> Bytes {
+    pub fn to_sign_bytes(&self) -> Bytes {
         Protobuf::to_bytes(self).unwrap()
+    }
+
+    pub fn from_sign_bytes(bytes: &[u8]) -> Result<Self, ProtoError> {
+        Protobuf::from_bytes(bytes)
     }
 }
 

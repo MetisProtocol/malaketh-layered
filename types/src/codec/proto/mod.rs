@@ -350,9 +350,14 @@ impl Codec<sync::Request<TestContext>> for ProtobufCodec {
             .ok_or_else(|| ProtoError::missing_field::<proto::SyncRequest>("request"))?;
 
         match request {
-            proto::sync_request::Request::ValueRequest(req) => {
-                Ok(sync::Request::ValueRequest(sync::ValueRequest::new(Height::new(req.height))))
-            }
+            proto::sync_request::Request::ValueRequest(req) => match req.end_height {
+                Some(end_height) if end_height < req.height => {
+                    Err(ProtoError::invalid_data::<proto::SyncRequest>("end_height"))
+                }
+                end_height => Ok(sync::Request::ValueRequest(sync::ValueRequest::new(
+                    Height::new(req.height)..=Height::new(end_height.unwrap_or(req.height)),
+                ))),
+            },
             _ => todo!(),
         }
     }
@@ -360,9 +365,12 @@ impl Codec<sync::Request<TestContext>> for ProtobufCodec {
     fn encode(&self, msg: &sync::Request<TestContext>) -> Result<Bytes, Self::Error> {
         let proto = match msg {
             sync::Request::ValueRequest(req) => proto::SyncRequest {
-                request: Some(proto::sync_request::Request::ValueRequest(proto::ValueRequest {
-                    height: req.height.as_u64(),
-                })),
+                request: Some(proto::sync_request::Request::ValueRequest(
+                    proto::ValueRequest {
+                        height: req.range.start().as_u64(),
+                        end_height: Some(req.range.end().as_u64()),
+                    },
+                )),
             },
             // sync::Request::VoteSetRequest(req) => proto::SyncRequest {
             //     request: Some(proto::sync_request::Request::VoteSetRequest(
@@ -400,8 +408,12 @@ pub fn decode_sync_response(
     let response = match response {
         proto::sync_response::Response::ValueResponse(value_response) => {
             sync::Response::ValueResponse(sync::ValueResponse::new(
-                Height::new(value_response.height),
-                value_response.value.map(decode_synced_value).transpose()?,
+                Height::new(value_response.start_height),
+                value_response
+                    .values
+                    .into_iter()
+                    .map(decode_synced_value)
+                    .collect::<Result<Vec<_>, ProtoError>>()?,
             ))
         }
         _ => todo!(),
@@ -415,8 +427,12 @@ pub fn encode_sync_response(
     let proto = match response {
         sync::Response::ValueResponse(value_response) => proto::SyncResponse {
             response: Some(proto::sync_response::Response::ValueResponse(proto::ValueResponse {
-                height: value_response.height.as_u64(),
-                value: value_response.value.as_ref().map(encode_synced_value).transpose()?,
+                start_height: value_response.start_height.as_u64(),
+                values: value_response
+                    .values
+                    .iter()
+                    .map(encode_synced_value)
+                    .collect::<Result<Vec<_>, _>>()?,
             })),
         },
     };
