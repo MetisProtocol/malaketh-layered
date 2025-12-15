@@ -1,10 +1,10 @@
+use async_trait::async_trait;
 use bytes::Bytes;
-use malachitebft_core_types::{
-    SignedExtension, SignedProposal, SignedProposalPart, SignedVote, SigningProvider,
-};
+use malachitebft_core_types::{SignedExtension, SignedProposal, SignedProposalPart, SignedVote};
 
 use crate::{Proposal, ProposalPart, TestContext, Vote};
 
+pub use malachitebft_signing::{Error, SigningProvider, VerificationResult};
 pub use malachitebft_signing_ed25519::*;
 
 pub trait Hashable {
@@ -46,53 +46,66 @@ impl Ed25519Provider {
     }
 }
 
+#[async_trait]
 impl SigningProvider<TestContext> for Ed25519Provider {
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn sign_vote(&self, vote: Vote) -> SignedVote<TestContext> {
-        let signature = self.sign(&vote.to_bytes());
-        SignedVote::new(vote, signature)
+    async fn sign_vote(&self, vote: Vote) -> Result<SignedVote<TestContext>, Error> {
+        let signature = self.sign(&vote.to_sign_bytes());
+        Ok(SignedVote::new(vote, signature))
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn verify_signed_vote(
+    async fn verify_signed_vote(
         &self,
         vote: &Vote,
         signature: &Signature,
         public_key: &PublicKey,
-    ) -> bool {
-        public_key.verify(&vote.to_bytes(), signature).is_ok()
+    ) -> Result<VerificationResult, Error> {
+        Ok(VerificationResult::from_bool(
+            public_key.verify(&vote.to_sign_bytes(), signature).is_ok(),
+        ))
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn sign_proposal(&self, proposal: Proposal) -> SignedProposal<TestContext> {
-        let signature = self.private_key.sign(&proposal.to_bytes());
-        SignedProposal::new(proposal, signature)
+    async fn sign_proposal(
+        &self,
+        proposal: Proposal,
+    ) -> Result<SignedProposal<TestContext>, Error> {
+        let signature = self.private_key.sign(&proposal.to_sign_bytes());
+        Ok(SignedProposal::new(proposal, signature))
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn verify_signed_proposal(
+    async fn verify_signed_proposal(
         &self,
         proposal: &Proposal,
         signature: &Signature,
         public_key: &PublicKey,
-    ) -> bool {
-        public_key.verify(&proposal.to_bytes(), signature).is_ok()
+    ) -> Result<VerificationResult, Error> {
+        Ok(VerificationResult::from_bool(
+            public_key.verify(&proposal.to_sign_bytes(), signature).is_ok(),
+        ))
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn sign_proposal_part(&self, proposal_part: ProposalPart) -> SignedProposalPart<TestContext> {
+    async fn sign_proposal_part(
+        &self,
+        proposal_part: ProposalPart,
+    ) -> Result<SignedProposalPart<TestContext>, Error> {
         let signature = self.private_key.sign(&proposal_part.to_sign_bytes());
-        SignedProposalPart::new(proposal_part, signature)
+        Ok(SignedProposalPart::new(proposal_part, signature))
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn verify_signed_proposal_part(
+    async fn verify_signed_proposal_part(
         &self,
         proposal_part: &ProposalPart,
         signature: &Signature,
         public_key: &PublicKey,
-    ) -> bool {
-        public_key.verify(&proposal_part.to_sign_bytes(), signature).is_ok()
+    ) -> Result<VerificationResult, Error> {
+        Ok(VerificationResult::from_bool(
+            public_key.verify(&proposal_part.to_sign_bytes(), signature).is_ok(),
+        ))
     }
 
     // #[cfg_attr(coverage_nightly, coverage(off))]
@@ -120,16 +133,20 @@ impl SigningProvider<TestContext> for Ed25519Provider {
     //     Ok(validator.voting_power())
     // }
 
-    fn sign_vote_extension(&self, _extension: Bytes) -> SignedExtension<TestContext> {
-        unimplemented!()
+    async fn sign_vote_extension(
+        &self,
+        extension: Bytes,
+    ) -> Result<SignedExtension<TestContext>, Error> {
+        let signature = self.private_key.sign(extension.as_ref());
+        Ok(malachitebft_core_types::SignedMessage::new(extension, signature))
     }
 
-    fn verify_signed_vote_extension(
+    async fn verify_signed_vote_extension(
         &self,
-        _extension: &Bytes,
-        _signature: &Signature,
-        _public_key: &PublicKey,
-    ) -> bool {
-        unimplemented!()
+        extension: &Bytes,
+        signature: &Signature,
+        public_key: &PublicKey,
+    ) -> Result<VerificationResult, Error> {
+        Ok(VerificationResult::from_bool(public_key.verify(extension.as_ref(), signature).is_ok()))
     }
 }

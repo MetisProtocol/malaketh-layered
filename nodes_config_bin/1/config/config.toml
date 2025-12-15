@@ -64,6 +64,7 @@ max_response_size = "536.9 MB"
 parallel_requests = 5
 scoring_strategy = "ema"
 inactive_threshold = "1m"
+batch_size = 5
 
 [metrics]
 enabled = true
