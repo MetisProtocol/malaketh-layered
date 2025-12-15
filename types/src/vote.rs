@@ -44,10 +44,7 @@ impl Vote {
     }
 
     pub fn to_sign_bytes(&self) -> Bytes {
-        let vote = Self {
-            extension: None,
-            ..self.clone()
-        };
+        let vote = Self { extension: None, ..self.clone() };
 
         Protobuf::to_bytes(&vote).unwrap()
     }

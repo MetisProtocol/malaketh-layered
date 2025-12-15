@@ -365,12 +365,10 @@ impl Codec<sync::Request<TestContext>> for ProtobufCodec {
     fn encode(&self, msg: &sync::Request<TestContext>) -> Result<Bytes, Self::Error> {
         let proto = match msg {
             sync::Request::ValueRequest(req) => proto::SyncRequest {
-                request: Some(proto::sync_request::Request::ValueRequest(
-                    proto::ValueRequest {
-                        height: req.range.start().as_u64(),
-                        end_height: Some(req.range.end().as_u64()),
-                    },
-                )),
+                request: Some(proto::sync_request::Request::ValueRequest(proto::ValueRequest {
+                    height: req.range.start().as_u64(),
+                    end_height: Some(req.range.end().as_u64()),
+                })),
             },
             // sync::Request::VoteSetRequest(req) => proto::SyncRequest {
             //     request: Some(proto::sync_request::Request::VoteSetRequest(

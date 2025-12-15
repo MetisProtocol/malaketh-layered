@@ -1,8 +1,6 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use malachitebft_core_types::{
-    SignedExtension, SignedProposal, SignedProposalPart, SignedVote,
-};
+use malachitebft_core_types::{SignedExtension, SignedProposal, SignedProposalPart, SignedVote};
 
 use crate::{Proposal, ProposalPart, TestContext, Vote};
 
@@ -85,9 +83,7 @@ impl SigningProvider<TestContext> for Ed25519Provider {
         public_key: &PublicKey,
     ) -> Result<VerificationResult, Error> {
         Ok(VerificationResult::from_bool(
-            public_key
-                .verify(&proposal.to_sign_bytes(), signature)
-                .is_ok(),
+            public_key.verify(&proposal.to_sign_bytes(), signature).is_ok(),
         ))
     }
 
@@ -108,9 +104,7 @@ impl SigningProvider<TestContext> for Ed25519Provider {
         public_key: &PublicKey,
     ) -> Result<VerificationResult, Error> {
         Ok(VerificationResult::from_bool(
-            public_key
-                .verify(&proposal_part.to_sign_bytes(), signature)
-                .is_ok(),
+            public_key.verify(&proposal_part.to_sign_bytes(), signature).is_ok(),
         ))
     }
 
@@ -144,9 +138,7 @@ impl SigningProvider<TestContext> for Ed25519Provider {
         extension: Bytes,
     ) -> Result<SignedExtension<TestContext>, Error> {
         let signature = self.private_key.sign(extension.as_ref());
-        Ok(malachitebft_core_types::SignedMessage::new(
-            extension, signature,
-        ))
+        Ok(malachitebft_core_types::SignedMessage::new(extension, signature))
     }
 
     async fn verify_signed_vote_extension(
@@ -155,8 +147,6 @@ impl SigningProvider<TestContext> for Ed25519Provider {
         signature: &Signature,
         public_key: &PublicKey,
     ) -> Result<VerificationResult, Error> {
-        Ok(VerificationResult::from_bool(
-            public_key.verify(extension.as_ref(), signature).is_ok(),
-        ))
+        Ok(VerificationResult::from_bool(public_key.verify(extension.as_ref(), signature).is_ok()))
     }
 }
